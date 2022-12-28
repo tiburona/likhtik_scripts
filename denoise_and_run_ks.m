@@ -1,8 +1,8 @@
 dbstop if error
 
-addpath(genpath('.'));
+addpath(genpath('C:\Users\Likhtik Lab\katie'));
 
-datadir = './155';
+datadir = 'C:\Users\Likhtik Lab\katie\data\155';
 fname = 'IG 155 - Recall - CtxtA - Safety.ns6.ns6';
 chanmapfile = 'Chan14.mat';
 

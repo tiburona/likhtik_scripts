@@ -8,7 +8,7 @@ end
 rootH = '.'; % path to temporary binary file (same size as data, should be on fast SSD)
 pathToYourConfigFile = 'C:\Users\Likhtik Lab\katie\likhtik_scripts'; % take from Github folder and put it somewhere else (together with the master_file)
 load(fullfile(pathToYourConfigFile, chanMapFile),'chanMap','chanMap0ind','connected','kcoords','name','xcoords','ycoords');
-n_channels=16;
+n_channels=length(chanMap);
 %automatically detect noisy channels
 M=memmapfile(fullfile(rootZ, 'data_binary.bin'));
 M=memmapfile(fullfile(rootZ, 'data_binary.bin'),'Format',{'int16',fix([n_channels length(M.Data)/n_channels/2]),'data'});
