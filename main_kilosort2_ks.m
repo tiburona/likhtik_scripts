@@ -1,38 +1,40 @@
-function run_kilosort_onfile_ks(rootZ,chanMapFile)
-if nargin<2 || isempty(chanMapFile)
-    chanMapFile='Chan16.mat';
-end
-%% Based on code by Marius Pachitariu (marius10p, github), Kilosort2 code
-%% Requires Kilosort2 and its dependencies
+function main_kilosort2_ks(dataPath, chanMatFile)
 
-rootH = '.'; % path to temporary binary file (same size as data, should be on fast SSD)
+%% you need to change most of the paths in this block
+
+% addpath(genpath('D:\GitHub\KiloSort2')) % path to kilosort folder
+% addpath('D:\GitHub\npy-matlab') % for converting to Phy
+% rootZ = 'G:\drift_simulations\test'; % the raw data binary file is in this folder
+% rootH = 'H:\'; % path to temporary binary file (same size as data, should be on fast SSD)
+% pathToYourConfigFile = 'D:\GitHub\KiloSort2\configFiles'; % take from Github folder and put it somewhere else (together with the master_file)
+% chanMapFile = 'neuropixPhase3A_kilosortChanMap.mat';
+
+addpath(genpath('C:\Users\Katie\software\')) % path to kilosort folder
+rootZ = dataPath; % the raw data binary file is in this folder
+rootH = dataPath; % path to temporary binary file (same size as data, should be on fast SSD)
 pathToYourConfigFile = 'C:\Users\Katie\likhtik_scripts'; % take from Github folder and put it somewhere else (together with the master_file)
-load(fullfile(pathToYourConfigFile, chanMapFile),'chanMap','chanMap0ind','connected','kcoords','name','xcoords','ycoords');
-n_channels=16;
-%automatically detect noisy channels
-M=memmapfile(fullfile(rootZ, 'data_binary.bin'));
-M=memmapfile(fullfile(rootZ, 'data_binary.bin'),'Format',{'int16',fix([n_channels length(M.Data)/n_channels/2]),'data'});
-A=M.Data.data(:,1:min(100000,size(M.Data.data,2)));
-ranges=max(A,[],2)-min(A,[],2);
-noisy=ranges>min(double(ranges))*4;
+chanMapFile = 'Chan14.mat';
 
-connected=true(16,1);
-connected(noisy)=false;
-save(fullfile(pathToYourConfigFile, chanMapFile),'chanMap','chanMap0ind','connected','kcoords','name','xcoords','ycoords');
-%
+
 ops.trange = [0 Inf]; % time range to sort
-ops.NchanTOT    = n_channels; % total number of channels in your recording
+ops.NchanTOT    = 16; % total number of channels in your recording
 
 run(fullfile(pathToYourConfigFile, 'configFile16.m'))
-ops.fproc = fullfile(rootH, 'temp_wh.dat'); % proc file on a fast SSD
+ops.fproc       = fullfile(rootH, 'temp_wh.dat'); % proc file on a fast SSD
 ops.chanMap = fullfile(pathToYourConfigFile, chanMapFile);
 
 %% this block runs all the steps of the algorithm
 fprintf('Looking for data inside %s \n', rootZ)
 
+% is there a channel map file in this folder?
+fs = dir(fullfile(rootZ, 'chan*.mat'));
+if ~isempty(fs)
+    ops.chanMap = fullfile(rootZ, fs(1).name);
+end
+
 % find the binary file
-fss          = [dir(fullfile(rootZ, '*.bin')) dir(fullfile(rootZ, '*.dat'))];
-ops.fbinary = fullfile(rootZ, fss(1).name);
+fs          = [dir(fullfile(rootZ, '*.bin')) dir(fullfile(rootZ, '*.dat'))];
+ops.fbinary = fullfile(rootZ, fs(1).name);
 
 % preprocess data to create temp_wh.dat
 rez = preprocessDataSub(ops);
@@ -45,6 +47,10 @@ save(fullfile(rootZ, 'rez.mat'), 'rez', '-v7.3');
 
 % main tracking and template matching algorithm
 rez = learnAndSolve8b(rez);
+
+% OPTIONAL: remove double-counted spikes - solves issue in which individual spikes are assigned to multiple templates.
+% See issue 29: https://github.com/MouseLand/Kilosort2/issues/29
+%rez = remove_ks2_duplicate_spikes(rez);
 
 % final merges
 rez = find_merges(rez, 1);
