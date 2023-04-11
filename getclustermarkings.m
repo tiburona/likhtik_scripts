@@ -1,11 +1,11 @@
 function [cids,cgs]=getclustermarkings(folder)
 endswithslash=strcmp(folder(end),'\');
-if ~endswithslash
-    folder=[folder,'\'];
-end
-original=[folder,'cluster_KSlabel.tsv'];
+% if ~endswithslash
+%     folder=[folder,'\'];
+% end
+original=fullfile(folder,'cluster_KSlabel.tsv');
 [cids, cgs] = readClusterGroupsCSV(original);
-new=[folder,'cluster_group.tsv'];
+new=fullfile(folder,'cluster_group.tsv');
 if exist(new,'file')
 [cids_new, cgs_new] = readClusterGroupsCSV(new);
 cids_all=sort(unique([cids cids_new]));

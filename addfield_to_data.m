@@ -8,6 +8,11 @@
     % make scatterplot of firing rate over all times by half maximum width
     % over all times see what patterns emerge
 
+    % percentage of cells going up or down.
+
+    % cross correlation (among units we have for a single animal)
+    % difference in ISpikeI 
+
 % Load the struct
 load('./data.mat')
 
