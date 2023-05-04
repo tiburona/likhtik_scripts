@@ -54,7 +54,8 @@ function process_units(data, animal, animal_idx, unit_type, fid, condition)
         % Initialize event counts for different conditions
         event_count_pre_tone = 0;
         event_count_inter_tone = 0;
-        event_count_post_beep_0_600 = 0;
+        event_count_post_beep_0_300 = 0;
+        event_count_post_beep_301_600 = 0;
         event_count_late_post_beep = 0;
 
         % Get ToneOn_ts_expanded
@@ -90,8 +91,13 @@ function process_units(data, animal, animal_idx, unit_type, fid, condition)
             post_beep = false;
             for j = 1:length(tone_on_ts_expanded)
                 time_diff = timestamp - tone_on_ts_expanded(j);
-                if time_diff >= 0 && time_diff <= 600 * CYCLES_PER_SECOND / 1000
-                    event_count_post_beep_0_600 = event_count_post_beep_0_600 + 1;
+                if time_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
+                    event_count_post_beep_0_300 = event_count_post_beep_0_300 + 1;
+                    post_beep = true;
+                    break;
+                elseif time_diff >= 301 && time_diff <= 600 * CYCLES_PER_SECOND / 1000
+                    time_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
+                    event_count_post_beep_301_600 = event_count_post_beep_301_600 + 1;
                     post_beep = true;
                     break;
                 elseif time_diff > 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
@@ -105,13 +111,15 @@ function process_units(data, animal, animal_idx, unit_type, fid, condition)
        % Initialize the elapsed time for different conditions
         elapsed_time_pre_tone = (data(animal_idx).ToneOn_ts(1) - recording_start) / CYCLES_PER_SECOND;
         elapsed_time_inter_tone = sum(data(animal_idx).ToneOn_ts(2:end) - data(animal_idx).ToneOff_ts(1:end-1)) / CYCLES_PER_SECOND;
-        elapsed_time_post_beep_0_600 = (600 / 1000) * length(tone_on_ts_expanded);
+        elapsed_time_post_beep_0_300 = (301 / 1000) * length(tone_on_ts_expanded);
+        elapsed_time_post_beep_301_600 = (300 / 1000) * length(tone_on_ts_expanded);
         elapsed_time_late_post_beep = ((1000 - 600) / 1000) * length(tone_on_ts_expanded);
         
         % Calculate spike rates for different conditions
         spike_rate_pre_tone = event_count_pre_tone / elapsed_time_pre_tone;
         spike_rate_inter_tone = event_count_inter_tone / sum(elapsed_time_inter_tone);
-        spike_rate_post_beep_0_600 = event_count_post_beep_0_600 / elapsed_time_post_beep_0_600;
+        spike_rate_post_beep_0_300 = event_count_post_beep_0_300 / elapsed_time_post_beep_0_300;
+        spike_rate_post_beep_301_600 = event_count_post_beep_301_600 / elapsed_time_post_beep_301_600;
         spike_rate_late_post_beep = event_count_late_post_beep / elapsed_time_late_post_beep;
         
         % Write a row to the CSV file with the spike rate for this unit in different conditions
@@ -119,7 +127,9 @@ function process_units(data, animal, animal_idx, unit_type, fid, condition)
         fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
         row = {animal, condition, unit_type, unit_num, 'inter-tone', spike_rate_inter_tone};
         fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
-        row = {animal, condition, unit_type, unit_num, 'post-beep (0-600 ms)', spike_rate_post_beep_0_600};
+        row = {animal, condition, unit_type, unit_num, 'early post-beep (0-300 ms)', spike_rate_post_beep_0_300};
+        fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
+        row = {animal, condition, unit_type, unit_num, 'mid post-beep (301-600 ms)', spike_rate_post_beep_301_600};
         fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
         row = {animal, condition, unit_type, unit_num, 'late post-beep (>600 ms)', spike_rate_late_post_beep};
         fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});

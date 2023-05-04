@@ -1,49 +1,25 @@
 dbstop if error
 
+single_cell_data = process_waveforms(single_cell_data);
+scatter_plot(single_cell_data);
 
-
-process_waveforms(single_cell_data, true)
-
-function data = process_waveforms(data, exclude_outliers)
-
-if nargin < 2
-    exclude_outliers = false;
-end
+function data = process_waveforms(data)
 
 % Constants
 sampling_rate = 30000; % 30 kHz sampling rate
 
-
-gwfparams.nCh = 14;                      % Number of channels that were streamed to disk in .dat file
+gwfparams.nCh = 16;                      % Number of channels that were streamed to disk in .dat file
 gwfparams.wfWin = [-100 200];            % Number of samples before and after spiketime to include in waveform
 gwfparams.nWf = 2000;                    % Number of waveforms per unit to pull out
-% gwfparams.dataDir = '/path/to/data/';    % KiloSort/Phy output folder
-% gwfparams.fileName = 'data.dat';         % .dat file containing the raw 
-% gwfparams.dataType = 'int16';            % Data type of .dat file (this should be BP filtered)
-% gwfparams.nCh = 32;                      % Number of channels that were streamed to disk in .dat file
-% gwfparams.wfWin = [-40 41];              % Number of samples before and after spiketime to include in waveform
-% gwfparams.nWf = 2000;                    % Number of waveforms per unit to pull out
-% gwfparams.spikeTimes =    [2,3,5,7,8,9]; % Vector of cluster spike times (in samples) same length as .spikeClusters
-% gwfparams.spikeClusters = [1,2,1,1,1,2]; % Vector of cluster IDs (Phy nomenclature)   same length as .spikeTimes
+gwfparams.dataType = 'int16';            % Data type of .dat file
+gwfparams.fileName = 'data_binary.bin';
 
 % Loop through animals
 for i = 1:length(data)
     animal = data(i);
-    if ~ismember(animal.animal, {'IG154', 'IG156', 'IG177', 'IG178', 'IG179', 'IG180'})
-        continue
-    end
 
-    channel_indices = [2, 4:16];
-
-%     gwfparams.dataDir = animal.rootdir;
-%     gwfparams.fileName = 'data_binary.bin';
-%     gwfparams.dataType = 'int16';            % Data type of .dat file (this should be BP filtered)
-%     gwfparams.nCh = 16;                      % Number of channels that were streamed to disk in .dat file
-%     gwfparams.wfWin = [-100 201];             % Number of samples before and after spiketime to include in waveform
-%     gwfparams.nWf = 2000;                    % Number of waveforms per unit to pull out
-%     gwfparams.spikeTimes = readNPY(fullfile(gwfparams.dataDir, 'spike_times.npy'));
-
-  
+    gwfparams.dataDir = animal.rootdir;
+    gwfparams.spikeTimes = readNPY(fullfile(gwfparams.dataDir, 'spike_times.npy'));
     [cids,cgs] = getclustermarkings(animal.rootdir);
     cl = readNPY(fullfile(animal.rootdir, 'spike_clusters.npy'));
 
@@ -53,12 +29,13 @@ for i = 1:length(data)
     gwfparams.spikeClusters(toremove) = [];
     cids(cgs==0) = [];
     cgs(cgs==0) = [];
-    %wf = getWaveForms(gwfparams);
+    wf = getWaveForms(gwfparams);
 
     chMap = readNPY(fullfile(gwfparams.dataDir, 'channel_map.npy'))+1; 
     
     % Create a new field in the data struct for the FWHM results
     animal.units_FWHM = cell(size(animal.units.good));
+    animal.units_min = cell(size(animal.units.good));
     
     % Open binary file for the current animal
     file_path = fullfile(animal.rootdir, 'data_binary.bin');
@@ -71,34 +48,30 @@ for i = 1:length(data)
 
     % Apply a fifth-order median filter to the electrode data
     all_data = medfilt1(double(all_data), 5, [], 2);
-
-    % Calculate the range for each electrode's raw data
-    ranges = range(all_data, 2);
-
-    % Exclude electrodes with a range of values more than four times the range of the electrode with the smallest range of values
-    if exclude_outliers
-        min_range = min(ranges);
-        valid_electrodes = find(ranges <= 4 * min_range);
-        all_data = all_data(valid_electrodes, :);
-        channel_indices = channel_indices(valid_electrodes);
-    else
-        valid_electrodes = 1:length(channel_indices);
-    end
     
     % Loop through units
     for j = 1:length(animal.units.good)
+
         spike_times = animal.units.good{j};
         spike_times = spike_times(spike_times > 100 & spike_times < size(M1.Data.data, 2) - 200);
-    
+        electrodes = animal.electrodes.good{j};
+
         % Initialize arrays to store waveforms for each channel
-        all_waveforms = zeros(length(spike_times), gwfparams.wfWin(2) - gwfparams.wfWin(1) + 1, length(channel_indices));
-        
+        all_waveforms = zeros(length(spike_times), gwfparams.wfWin(2) - gwfparams.wfWin(1) + 1, length(electrodes));
+
+        % transformation of phy electrode labels to index in raw data
+        for el = 1:length(electrodes)
+            if electrodes(el) > 1
+                electrodes(el) = electrodes(el) - 1;
+            end
+        end
+    
         for k = 1:length(spike_times)
             % Calculate the start and end sample indices for the waveform
             start_sample = spike_times(k) + gwfparams.wfWin(1);
             end_sample = spike_times(k) + gwfparams.wfWin(2);
-            
-            wf_data = all_data(:, start_sample:end_sample)';
+
+            wf_data = all_data(electrodes', start_sample:end_sample)'; 
             
             % Store the waveforms for each channel
             all_waveforms(k, :, :) = wf_data;
@@ -107,32 +80,121 @@ for i = 1:length(data)
         % Compute the mean waveform for each channel
         mean_waveforms = squeeze(mean(all_waveforms, 1));
         
+        dimension = 1;
+        if length(electrodes) == 1; dimension = 2; end;
+           
+        mean_centered_waveforms = bsxfun(@minus, mean_waveforms, mean(mean_waveforms, dimension));
+        
+        if length(electrodes) > 1
+            mean_of_electrodes = squeeze(mean(mean_centered_waveforms, 2)); 
+        else
+            mean_of_electrodes = mean_centered_waveforms;
+        end
+        
         % Calculate the Full Width Half Minimum (FWHM) of the mean waveform
-        half_min = (min(mean_waveforms) + max(mean_waveforms)) / 2;
-        below_half_min = mean_waveforms <= (max(mean_waveforms) + half_min);
+        half_min = (min(mean_of_electrodes) + max(mean_of_electrodes)) / 2;
+        below_half_min = mean_of_electrodes <= (max(mean_of_electrodes) + half_min);
         FWHM_samples = sum(below_half_min);
         FWHM_time = FWHM_samples / sampling_rate;
 
-
+       
         % Save the FWHM result to the data struct
         animal.units_FWHM{j} = FWHM_time;
 
+        % Save the amplitude to the data struct
+        animal.units_min{j} = min(mean_of_electrodes);
+
+
         % Plot and save the mean waveform for each valid electrode
         figure;
-        plot(mean_waveforms(:, :));
-        xlabel('Samples');
-        ylabel('Amplitude');
-        title(sprintf('Mean Waveform for Unit %d', j));
-        legend(arrayfun(@(x) sprintf('Ch %d', channel_indices(x)), 1:length(valid_electrodes), 'UniformOutput', false));
-        saveas(gcf, fullfile(animal.rootdir, sprintf('Mean_Waveform_Unit_%d.png', j)));
-        close(gcf);
+        if length(electrodes) == 1
+            plot(mean_waveforms(:));
+            xlabel('Samples');
+            ylabel('microvolts')
+        else
+            for elec_idx = 1:length(electrodes)
+                subplot(length(electrodes), 1, elec_idx);
+                plot(mean_waveforms(:, elec_idx));
+                
+                % Only add labels and title for the bottom subplot
+                if elec_idx == length(electrodes)
+                    xlabel('Samples');
+                else
+                    % Remove x and y axis labels for other subplots
+                    set(gca, 'XTickLabel', []);
+                 
+                end
+                ylabel('microvolts')
+            end
+        end
+
+% Set the overall figure title
+sgtitle(sprintf('%s Mean Waveform for Unit %d', animal.animal, j));
+
+% Save and close the figure
+saveas(gcf, fullfile('/Users/katie/likhtik/data/graphs/waveforms', ...
+    sprintf('%s_Mean_Waveform_Unit_%d.png', animal.animal, j)));
+close(gcf);
+
+
     end
 
-    % Update the data struct with the new FWHM field
+    % Update the data struct with the new fields
+
     data(i).units_FWHM = animal.units_FWHM;
+    data(i).units_min = animal.units_min;
+
 
     % Close the binary file
     fclose(fid);
 end
 
 end
+
+function scatter_plot(data)
+    % Initialize x and y data for scatter plot
+    x = [];
+    y = [];
+
+    % Extract FWHM and unit number data
+    for i = 1:length(data)
+        animal = data(i);
+        FWHM = [animal.units_FWHM{:}];
+        amplitude = [animal.units_min{:}];
+        x = [x, FWHM];
+        y = [y, amplitude];
+    end
+
+    % Create scatter plot
+    h = scatter(x, y, 'filled');
+
+    % Set up data cursor
+    dcm_obj = datacursormode(gcf);
+    set(dcm_obj, 'UpdateFcn', @customdatatip, 'Enable', 'on', 'SnapToDataVertex', 'on');
+
+    % Set axis labels
+    xlabel('Full Width Half Minimum');
+    ylabel('Amplitude');
+    title('Scatterplot of Good Units');
+
+    % Custom data cursor function
+    function txt = customdatatip(~, event_obj)
+        pos = get(event_obj, 'Position');
+        idx = find(x == pos(1) & y == pos(2));
+        % Find the animal and unit number corresponding to the clicked point
+        cumulative_units = 0;
+        for i = 1:length(data)
+            animal = data(i);
+            if idx <= cumulative_units + length(animal.units_FWHM)
+                unit_idx = idx - cumulative_units;
+                txt = {['Animal: ', animal.animal], ['Unit: ', num2str(unit_idx)]};
+                break;
+            else
+                cumulative_units = cumulative_units + length(animal.units_FWHM);
+            end
+        end
+    end
+
+    
+end
+

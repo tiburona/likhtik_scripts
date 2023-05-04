@@ -4,28 +4,60 @@ library(ggplot2)
 library(ggeffects)
 library(sjPlot)
 
-data_file = '/Users/katie/likhtik/data/firing_rates.csv'
-data = read.csv(data_file)
+data_dir <- '/Users/katie/likhtik/data'
 
-data$unit_num = factor(data$unit_num)
-data$animal = factor(data$animal)
-data$unit_type = factor(data$unit_type)
-data$condition = factor(data$condition)
-data$time_period <- factor(data$time_period, levels = c("pre-tone", "post-beep (0-600 ms)", "late post-beep (>600 ms)", "inter-tone"))
-data <- subset(data, condition != "")
 
-good_data = subset(data, data$unit_type == 'good')
-fit = lmer(spike_rate ~ condition*unit_type*time_period + (1|animal/unit_num), data=data)
+process_data <- function(element_type, data_dir) {
+  
+  data_file <- file.path(data_dir, paste('firing_rates_by_', element_type, '.csv', sep=""))
+  # Read the CSV filed
+  data <- read.csv(data_file)
+  
+  # Convert columns to factors
+ 
+  data$unit_type <- factor(data$unit_type)
+  data$animal <- factor(data$animal)
+  
+  if (element_type == 'unit') {
+    data$unit_num <- factor(data$unit_num)
+  } else {
+    data$stereotrode <- factor(data$stereotrode)
+    }
+  
+  data$condition <- factor(data$condition)
+  
+  # Reorder time_period factor levels
+  data$period <- factor(data$period, 
+                             levels = c("pre_tone", 
+                                        "post_beep_0_300", 
+                                        "post_beep_301_600", 
+                                        "late_post_beep", 
+                                        "inter_tone"))
+  
+  # Remove rows with empty condition values
+  data <- subset(data, condition != "")
+  
+  return(data)
+}
 
-model <- aov(count ~ condition*unit_type + Error(animal), data = data)
+unit_data <- process_data('unit', data_dir)
+stereotrode_data <- process_data('stereotrode', data_dir)
 
-result <- t.test(count ~ condition, data = data)
+
+stereotrode_model = lmer(spike_rate ~ condition*unit_type*period + (1|animal/stereotrode), data=stereotrode_data)
+
+good_unit_data = subset(unit_data, unit_data$unit_type == 'good')
+
+unit_model = lmer(spike_rate ~ condition*period + (1|animal/unit_num), data = good_unit_data)
+
+# model <- aov(spike_rate ~ condition*unit_type + Error(animal), data = data)
+
 
 # create effects plot for interaction of unit_type and condition
 interaction_plot <- ggpredict(fit, terms = c("unit_type", "condition"), type = "fe")
 
 
-p <- ggplot(data = data, mapping = aes(x = condition, y = spike_rate, fill = time_period)) + 
+p <- ggplot(data = stereotrode_data, mapping = aes(x = condition, y = spike_rate, fill = period)) + 
   geom_boxplot() +
   facet_wrap(~ unit_type, ncol = 1)
 

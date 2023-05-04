@@ -1,8 +1,8 @@
 function data=process_post_phy(day_dir,animal_data, ToneOnCode, ToneOffCode)
 
-spt=readNPY([day_dir,'\spike_times.npy']);
-cl=readNPY([day_dir,'\spike_clusters.npy']);
-features=readNPY([day_dir,'\pc_features.npy']);
+spt=readNPY(fullfile(day_dir, 'spike_times.npy'));
+cl=readNPY(fullfile(day_dir,'spike_clusters.npy'));
+features=readNPY(fullfile(day_dir,'pc_features.npy'));
 [cids,cgs]=getclustermarkings(day_dir);
 
 data=struct();

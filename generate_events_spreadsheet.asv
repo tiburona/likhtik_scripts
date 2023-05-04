@@ -1,13 +1,18 @@
+
+
 dbstop if error
 
 % Define the file name and path for the output CSV file
-csv_file = 'output.csv';
+csv_file = 'firing_rates.csv';
+
+control = {'IG160', 'IG163', 'IG176', 'IG178', 'IG180'};
+stressed = {'IG154', 'IG156', 'IG158', 'IG175', 'IG177', 'IG179'};
 
 % Open the file for writing
 fid = fopen(csv_file, 'w');
 
 % Define the header row for the CSV file
-header = {'animal', 'unit_type', 'unit_num', 'count'};
+header = {'animal', 'condition', 'unit_type', 'unit_num', 'time_period', 'spike_rate'};
 
 % Write the header row to the CSV file
 fprintf(fid, '%s,', header{1:end-1});
@@ -15,47 +20,116 @@ fprintf(fid, '%s\n', header{end});
 
 % Loop over all animals in the 'data' struct
 for animal_idx = 1:length(data)
+    % Determine the condition of the current animal
+    animal = data(animal_idx).rootdir;
+    animal = animal(strfind(animal, 'IG'):end);
+    if ismember(animal, control)
+        condition = 'control';
+    elseif ismember(animal, stressed)
+        condition = 'stressed';
+    else
+        condition = '';
+    end
+
     % Process the 'good' units for the current animal
-    process_units(data, animal_idx, 'good', fid);
+    process_units(data, animal, animal_idx, 'good', fid, condition);
 
     % Process the 'mua' units for the current animal
-    process_units(data, animal_idx, 'MUA', fid);
+    process_units(data, animal, animal_idx, 'MUA', fid, condition);
 end
 
 % Close the CSV file
 fclose(fid);
 
 % Define a function to process units of a given type
-function process_units(data, animal_idx, unit_type, fid)
+function process_units(data, animal, animal_idx, unit_type, fid, condition)
+
+    % Constants
+    CYCLES_PER_SECOND = 30000;
+    SECONDS_BEFORE_FIRST_TONE = 60;
     units = data(animal_idx).units.(unit_type);
     for unit_num = 1:length(units)
         timestamps = units{unit_num};
 
-        % Check whether the tone was on at each timestamp
-        event_count = 0;
+        % Initialize event counts for different conditions
+        event_count_pre_tone = 0;
+        event_count_inter_tone = 0;
+        event_count_post_beep_0_300 = 0;
+        event_count_post_beep_301_600 = 0;
+        event_count_late_post_beep = 0;
+
+        % Get ToneOn_ts_expanded
+        tone_on_ts_expanded = data(animal_idx).ToneOn_ts_expanded;
+
+        % Get the start of the recording (60 seconds before the first ToneOn)
+        recording_start = data(animal_idx).ToneOn_ts(1) - SECONDS_BEFORE_FIRST_TONE * CYCLES_PER_SECOND;
+
+        % Check the condition for each timestamp
         for i = 1:length(timestamps)
             timestamp = timestamps(i);
 
-            % Check whether the tone was on at the current timestamp
-            tone_on = false;
-            for j = 1:length(data(animal_idx).ToneOn_ts)
-                if data(animal_idx).ToneOn_ts(j) <= timestamp && data(animal_idx).ToneOff_ts(j) > timestamp
-                    tone_on = true;
+            % Pre-tone condition
+            if timestamp >= recording_start && timestamp < data(animal_idx).ToneOn_ts(1)
+                event_count_pre_tone = event_count_pre_tone + 1;
+                continue;
+            end
+
+            % Inter-tone condition
+            inter_tone = false;
+            for j = 1:length(data(animal_idx).ToneOff_ts) - 1
+                if data(animal_idx).ToneOff_ts(j) < timestamp && data(animal_idx).ToneOn_ts(j + 1) > timestamp
+                    event_count_inter_tone = event_count_inter_tone + 1;
+                    inter_tone = true;
                     break;
                 end
             end
+            if inter_tone
+                continue;
+            end
 
-            % If the tone was on, increment the event count
-            if tone_on
-                event_count = event_count + 1;
+            % Post-beep (0-600 ms) and Late post-beep (>600 ms) conditions
+            post_beep = false;
+            for j = 1:length(tone_on_ts_expanded)
+                time_diff = timestamp - tone_on_ts_expanded(j);
+                if time_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
+                    event_count_post_beep_0_300 = event_count_post_beep_0_300 + 1;
+                    post_beep = true;
+                    break;
+                elseif time_diff >= 301 && time_diff <= 600 * CYCLES_PER_SECOND / 1000
+                    ime_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
+                    event_count_post_beep_301_600 = event_count_post_beep_301_600 + 1;
+                    post_beep = true;
+                    break;
+                elseif time_diff > 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
+                    event_count_late_post_beep = event_count_late_post_beep + 1;
+                    post_beep = true;
+                    break;
+                end
             end
         end
 
-        % Write a row to the CSV file with the event count for this unit
-        animal = data(animal_idx).rootdir;
-        animal = animal(strfind(animal, 'IG'):end);
-        row = {animal, unit_type, unit_num, event_count};
-        fprintf(fid, '%s,%d\n', row{1:end-1}, row{end});
+       % Initialize the elapsed time for different conditions
+        elapsed_time_pre_tone = (data(animal_idx).ToneOn_ts(1) - recording_start) / CYCLES_PER_SECOND;
+        elapsed_time_inter_tone = sum(data(animal_idx).ToneOn_ts(2:end) - data(animal_idx).ToneOff_ts(1:end-1)) / CYCLES_PER_SECOND;
+        elapsed_time_post_beep_0_300 = (600 / 1000) * length(tone_on_ts_expanded);
+        elapsed_time_late_post_beep = ((1000 - 600) / 1000) * length(tone_on_ts_expanded);
+        
+        % Calculate spike rates for different conditions
+        spike_rate_pre_tone = event_count_pre_tone / elapsed_time_pre_tone;
+        spike_rate_inter_tone = event_count_inter_tone / sum(elapsed_time_inter_tone);
+        spike_rate_post_beep_0_600 = event_count_post_beep_0_600 / elapsed_time_post_beep_0_600;
+        spike_rate_late_post_beep = event_count_late_post_beep / elapsed_time_late_post_beep;
+        
+        % Write a row to the CSV file with the spike rate for this unit in different conditions
+        row = {animal, condition, unit_type, unit_num, 'pre-tone', spike_rate_pre_tone};
+        fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
+        row = {animal, condition, unit_type, unit_num, 'inter-tone', spike_rate_inter_tone};
+        fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
+        row = {animal, condition, unit_type, unit_num, 'post-beep (0-600 ms)', spike_rate_post_beep_0_600};
+        fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
+        row = {animal, condition, unit_type, unit_num, 'late post-beep (>600 ms)', spike_rate_late_post_beep};
+        fprintf(fid, '%s,%s,%s,%d,%s,%.6f\n', row{:});
+
     end
 end
 
