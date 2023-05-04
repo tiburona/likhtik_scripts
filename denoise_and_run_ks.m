@@ -4,12 +4,8 @@ addpath(genpath('C:\Users\Katie'));
 rmpath('C:\Users\Katie\likhtik_scripts\archive\')
 rmpath('C:\Users\Katie\software\archive\')
 
-mice = {'160', '161', '163', '176', '178', '180', '154', '155', ...
+mice = {'160', '163', '176', '178', '180', '154', ...
     '156', '158', '175', '177', '179'};
-
-
-
-
 
 for mouse = 1:length(mice)
 
@@ -22,11 +18,11 @@ for mouse = 1:length(mice)
     denoisedNS6 = NS6;
     denoisedNS6.Data = removeLineNoise_SpectrumEstimation(NS6.Data, 30000);
     writeBinary(datadir, denoisedNS6, []);
-    main_kilosort2_ks(datadir, 'Chan16.mat')
+    main_kilosort2_ks(datadir, 'Chan14.mat');
 
-    nofilter_NS6 = openFile(nofilter_dir, 'Safety.ns6');
-    writeBinary(nofilter_dir, nofilter_NS6, []);
-    run_kilosort_onfile_ks(nofilter_dir, 'Chan16.mat');
+%     nofilter_NS6 = openFile(nofilter_dir, 'Safety.ns6');
+%     writeBinary(nofilter_dir, nofilter_NS6, []);
+%     main_kilosort2_ks(nofilter_dir, 'Chan14.mat');
 
 end
 

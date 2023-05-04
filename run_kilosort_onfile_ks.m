@@ -15,8 +15,9 @@ M=memmapfile(fullfile(rootZ, 'data_binary.bin'),'Format',{'int16',fix([n_channel
 A=M.Data.data(:,1:min(100000,size(M.Data.data,2)));
 ranges=max(A,[],2)-min(A,[],2);
 noisy=ranges>min(double(ranges))*4;
+noisy = noisy(chanMap);
 
-connected=true(16,1);
+connected=true(14,1);
 connected(noisy)=false;
 save(fullfile(pathToYourConfigFile, chanMapFile),'chanMap','chanMap0ind','connected','kcoords','name','xcoords','ycoords');
 %
