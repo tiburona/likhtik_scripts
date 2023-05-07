@@ -3,6 +3,7 @@ dbstop if error
 single_cell_data = process_waveforms(single_cell_data);
 scatter_plot(single_cell_data);
 
+
 function data = process_waveforms(data)
 
 % Constants
@@ -17,6 +18,7 @@ gwfparams.fileName = 'data_binary.bin';
 % Loop through animals
 for i = 1:length(data)
     animal = data(i);
+
 
     gwfparams.dataDir = animal.rootdir;
     gwfparams.spikeTimes = readNPY(fullfile(gwfparams.dataDir, 'spike_times.npy'));
@@ -57,7 +59,7 @@ for i = 1:length(data)
         electrodes = animal.electrodes.good{j};
 
         % Initialize arrays to store waveforms for each channel
-        all_waveforms = zeros(length(spike_times), gwfparams.wfWin(2) - gwfparams.wfWin(1) + 1, length(electrodes));
+        all_waveforms = zeros(length(spike_times), length(electrodes), gwfparams.wfWin(2) - gwfparams.wfWin(1) + 1);
 
         % transformation of phy electrode labels to index in raw data
         for el = 1:length(electrodes)
@@ -71,24 +73,27 @@ for i = 1:length(data)
             start_sample = spike_times(k) + gwfparams.wfWin(1);
             end_sample = spike_times(k) + gwfparams.wfWin(2);
 
-            wf_data = all_data(electrodes', start_sample:end_sample)'; 
+            wf_data = all_data(electrodes', start_sample:end_sample); 
             
             % Store the waveforms for each channel
             all_waveforms(k, :, :) = wf_data;
         end
-    
-        % Compute the mean waveform for each channel
-        mean_waveforms = squeeze(mean(all_waveforms, 1));
-        
-        dimension = 1;
-        if length(electrodes) == 1; dimension = 2; end;
            
-        mean_centered_waveforms = bsxfun(@minus, mean_waveforms, mean(mean_waveforms, dimension));
+        mean_centered_waveforms = all_waveforms - mean(all_waveforms, 3);
         
+%         if j ~= 2 || i~=2
+%             continue
+%         end
+
+        % Compute the mean waveform for each channel
+        mean_waveforms = mean(mean_centered_waveforms, 1);
+
+        plot_waveforms(animal, j, mean_waveforms, electrodes);
+        plot_waveforms(animal, j, mean_centered_waveforms, electrodes, 'num_samples', 30);
+        
+        mean_of_electrodes = mean_waveforms;
         if length(electrodes) > 1
-            mean_of_electrodes = squeeze(mean(mean_centered_waveforms, 2)); 
-        else
-            mean_of_electrodes = mean_centered_waveforms;
+            mean_of_electrodes = squeeze(mean(mean_waveforms, 2)); 
         end
         
         % Calculate the Full Width Half Minimum (FWHM) of the mean waveform
@@ -105,37 +110,7 @@ for i = 1:length(data)
         animal.units_min{j} = min(mean_of_electrodes);
 
 
-        % Plot and save the mean waveform for each valid electrode
-        figure;
-        if length(electrodes) == 1
-            plot(mean_waveforms(:));
-            xlabel('Samples');
-            ylabel('microvolts')
-        else
-            for elec_idx = 1:length(electrodes)
-                subplot(length(electrodes), 1, elec_idx);
-                plot(mean_waveforms(:, elec_idx));
-                
-                % Only add labels and title for the bottom subplot
-                if elec_idx == length(electrodes)
-                    xlabel('Samples');
-                else
-                    % Remove x and y axis labels for other subplots
-                    set(gca, 'XTickLabel', []);
-                 
-                end
-                ylabel('microvolts')
-            end
-        end
-
-% Set the overall figure title
-sgtitle(sprintf('%s Mean Waveform for Unit %d', animal.animal, j));
-
-% Save and close the figure
-saveas(gcf, fullfile('/Users/katie/likhtik/data/graphs/waveforms', ...
-    sprintf('%s_Mean_Waveform_Unit_%d.png', animal.animal, j)));
-close(gcf);
-
+      
 
     end
 
@@ -147,8 +122,79 @@ close(gcf);
 
     % Close the binary file
     fclose(fid);
+
+ 
 end
 
+end
+
+function plot_waveforms(animal, unit_idx, waveforms, electrodes, varargin)
+    num_samples = 0;
+    for k = 1:length(varargin) - 1
+        if varargin{1} == 'num_samples'
+            num_samples = varargin{k + 1};
+            waveforms = select_rows(num_samples, waveforms);
+            
+        end
+    end  
+    
+    figure;
+    if length(electrodes) == 1
+        plot(squeeze(waveforms(:, 1, :))');
+        xlabel('Samples');
+        ylabel('microvolts')
+    else
+        for elec_idx = 1:length(electrodes)
+            subplot(length(electrodes), 1, elec_idx);
+           
+            plot(squeeze(waveforms(:, elec_idx, :))');
+
+            % Only add labels and title for the bottom subplot
+            if elec_idx == length(electrodes)
+                xlabel('Samples');
+            else
+                % Remove x and y axis labels for other subplots
+                set(gca, 'XTickLabel', []);
+             
+            end
+            ylabel('microvolts')
+        end
+    end
+    
+    if num_samples
+        name_str = 'Sample Waveforms';
+        ext = '.fig';
+    else
+        name_str = 'Mean Waveform';
+        ext = '.png';
+    end
+
+    % Set the overall figure title
+    sgtitle(sprintf('%s %s for Unit %d', animal.animal, name_str, unit_idx));
+    
+    % Save and close the figure
+    saveas(gcf, fullfile('/Users/katie/likhtik/data/graphs/waveforms', ...
+        sprintf('%s_%s_Unit_%d%s', animal.animal, strrep(name_str, ' ', '_'), unit_idx, ext)));
+    close(gcf);
+
+end
+
+
+function sampled_waveforms = select_rows(num_rows, all_waveforms)
+    
+% Generate a random permutation of row indices
+row_indices = randperm(size(all_waveforms, 1));
+
+% Select the first 30 indices
+selected_indices = row_indices(1:num_rows);
+
+% Create the new matrix with the selected rows
+sampled_waveforms = all_waveforms(selected_indices, :, :);
+
+end
+
+function plt(waveforms, elec_idx)
+    plot(squeeze(waveforms(:, elec_idx, :))');
 end
 
 function scatter_plot(data)
@@ -161,8 +207,8 @@ function scatter_plot(data)
         animal = data(i);
         FWHM = [animal.units_FWHM{:}];
         amplitude = [animal.units_min{:}];
-        x = [x, FWHM];
-        y = [y, amplitude];
+        x = [x, amplitude];
+        y = [y, FWHM];
     end
 
     % Create scatter plot
@@ -173,8 +219,8 @@ function scatter_plot(data)
     set(dcm_obj, 'UpdateFcn', @customdatatip, 'Enable', 'on', 'SnapToDataVertex', 'on');
 
     % Set axis labels
-    xlabel('Full Width Half Minimum');
-    ylabel('Amplitude');
+    xlabel('Amplitude');
+    ylabel('Full Width Half Minimum');
     title('Scatterplot of Good Units');
 
     % Custom data cursor function
@@ -195,8 +241,8 @@ function scatter_plot(data)
         end
     end
 
-    saveas(gc1, fullfile('/Users/katie/likhtik/data/graphs', ...
-    'FWHM_and_Amplitude_Scatterplot.png'));
+    saveas(gcf, fullfile('/Users/katie/likhtik/data/graphs', ...
+    'FWHM_and_Amplitude_Scatterplot.fig'));
 
     
 end
