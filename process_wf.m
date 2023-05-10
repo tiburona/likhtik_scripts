@@ -1,7 +1,10 @@
 dbstop if error
-
-single_cell_data = process_waveforms(single_cell_data);
+addpath(genpath('/Users/katie/likhtik'));
+load('single_cell_data.mat');
+%single_cell_data = process_waveforms(single_cell_data);
+single_cell_data = fr_fwhm_kmeans(single_cell_data);
 scatter_plot(single_cell_data);
+%save('single_cell_data.mat', 'single_cell_data');
 
 
 function data = process_waveforms(data)
@@ -81,10 +84,6 @@ for i = 1:length(data)
            
         mean_centered_waveforms = all_waveforms - mean(all_waveforms, 3);
         
-%         if j ~= 2 || i~=2
-%             continue
-%         end
-
         % Compute the mean waveform for each channel
         mean_waveforms = mean(mean_centered_waveforms, 1);
 
@@ -97,7 +96,7 @@ for i = 1:length(data)
         end
         
         % Calculate the Full Width Half Minimum (FWHM) of the mean waveform
-        half_min = (min(mean_of_electrodes) + max(mean_of_electrodes)) / 2;
+        half_min = (min(mean_of_electrodes) + max(mean_of_electrodes(50:150))) / 2; % Sometimes drift is such that the waveform gets higher than the max of the waveform later in the series.
         below_half_min = mean_of_electrodes <= (max(mean_of_electrodes) + half_min);
         FWHM_samples = sum(below_half_min);
         FWHM_time = FWHM_samples / sampling_rate;
@@ -108,6 +107,12 @@ for i = 1:length(data)
 
         % Save the amplitude to the data struct
         animal.units_min{j} = min(mean_of_electrodes);
+        
+        % Select later spikes for global firing rate calculation to try to
+        % reduce early noise
+        spike_times_for_fr = spike_times(spike_times > 15000);
+        fr = (length(spike_times_for_fr)/(double(spike_times_for_fr(end) - spike_times_for_fr(1))))*30000;
+        animal.firing_rate{j} = fr; 
 
 
       
@@ -118,13 +123,14 @@ for i = 1:length(data)
 
     data(i).units_FWHM = animal.units_FWHM;
     data(i).units_min = animal.units_min;
-
+    data(i).firing_rate = animal.firing_rate;
 
     % Close the binary file
     fclose(fid);
 
- 
+
 end
+
 
 end
 
@@ -197,31 +203,85 @@ function plt(waveforms, elec_idx)
     plot(squeeze(waveforms(:, elec_idx, :))');
 end
 
+function data = fr_fwhm_kmeans(data)
+
+    
+    % Initialize arrays for k-means clustering
+    all_FWHM = [];
+    all_firing_rates = [];
+    
+    % Extract FWHM and firing rate data for all units across animals
+    for i = 1:length(data)
+        animal = data(i);
+        FWHM = [animal.units_FWHM{:}];
+        firing_rate = [animal.firing_rate{:}];
+        all_FWHM = [all_FWHM, FWHM];
+        all_firing_rates = [all_firing_rates, firing_rate];
+    end
+    
+    % Perform k-means clustering on FWHM and firing rate data
+    k = 2;
+    X = [all_FWHM', all_firing_rates'];
+    [idx, ~] = kmeans(X, k);
+    
+    % Store the cluster assignments in the data structure
+    count = 1;
+    for i = 1:length(data)
+        animal = data(i);
+        num_units = length(animal.units_FWHM);
+        data(i).cluster_assignment = idx(count:count + num_units - 1)';
+        count = count + num_units;
+    end
+
+end
+
 function scatter_plot(data)
     % Initialize x and y data for scatter plot
     x = [];
     y = [];
+    idx = [];
 
-    % Extract FWHM and unit number data
+    % Extract FWHM, firing rate, and cluster assignment data
     for i = 1:length(data)
         animal = data(i);
-        FWHM = [animal.units_FWHM{:}];
-        amplitude = [animal.units_min{:}];
-        x = [x, amplitude];
-        y = [y, FWHM];
+        FWHM = [animal.units_FWHM{:}] * 1000000; %convert to microseconds
+        firing_rate = [animal.firing_rate{:}];
+        x = [x, FWHM];
+        y = [y, firing_rate];
+        idx = [idx, animal.cluster_assignment];
     end
 
-    % Create scatter plot
-    h = scatter(x, y, 'filled');
+    % Create a scatter plot and histograms
+    figure;
+    h1 = subplot(3, 4, [2, 3, 6, 7]);
+
+    % Color-code scatter plot by cluster assignment
+    gscatter(h1, x, y, idx, 'rb', '.', 20);
+
+
+ 
 
     % Set up data cursor
     dcm_obj = datacursormode(gcf);
     set(dcm_obj, 'UpdateFcn', @customdatatip, 'Enable', 'on', 'SnapToDataVertex', 'on');
+    
+    title(h1, 'Scatterplot of Good Units');
 
-    % Set axis labels
-    xlabel('Amplitude');
-    ylabel('Full Width Half Minimum');
-    title('Scatterplot of Good Units');
+    % Create histogram of FWHM
+    h2 = subplot(3, 4, [10, 11]);
+    histogram(h2, x, 'FaceColor', 'blue', 'BinWidth', 100); % Adjust 'BinWidth' to change the bin size
+    xlabel(h2, 'FWHM (microseconds)');
+    ylabel(h2, 'Count');
+    set(h2, 'XTickLabel', []);
+
+    % Create histogram of firing rate
+    h3 = subplot(3, 4, [1, 5]);
+    histogram(h3, y, 'FaceColor', 'red', 'Orientation', 'horizontal', 'BinWidth', 1); % Adjust 'BinWidth' to change the bin size
+    ylabel(h3, 'Firing Rate (Hz)');
+    xlabel(h3, 'Count');
+   
+    set(gca, 'XDir', 'reverse');
+    set(h3, 'YTickLabel', []);
 
     % Custom data cursor function
     function txt = customdatatip(~, event_obj)
@@ -242,8 +302,8 @@ function scatter_plot(data)
     end
 
     saveas(gcf, fullfile('/Users/katie/likhtik/data/graphs', ...
-    'FWHM_and_Amplitude_Scatterplot.fig'));
+    'FWHM_and_FR_Scatterplot_with_Adjusted_Histograms.fig'));
 
-    
 end
+
 
