@@ -1,3 +1,6 @@
+% this function comes from Joe
+% https://github.com/jmstujenske/PL_drives_nonaversion_via_SOM_IN/tree/main/kilosort2_utilities
+
 function [cids,cgs]=getclustermarkings(folder)
 endswithslash=strcmp(folder(end),'\');
 % if ~endswithslash

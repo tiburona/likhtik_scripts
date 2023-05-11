@@ -1,4 +1,7 @@
 function rez = set_cutoff_ks(rez)
+% This is a Kilosort2 file edited to make it callable after Kilosort has
+% run
+
 % after everything else is done, this function takes spike trains and cuts off
 % any noise they might have picked up at low amplitude values
 % We look for bimodality in the amplitude plot, thus setting an individual threshold

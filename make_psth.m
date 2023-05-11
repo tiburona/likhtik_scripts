@@ -54,13 +54,14 @@ function generate_psth_graphs(data, num_trials, graph_name_suffix)
 
         % Iterate through each unit for this animal
         for i_unit = 1:length(data(i_animal).units.good)
-            tone_onsets = data(i_animal).ToneOn_ts_expanded(1:num_trials);
-            spikes = data(i_animal).units.good{i_unit};
-            ToneOn_ts = data(i_animal).ToneOn_ts;
+            tone_onsets = data(i_animal).tone_onsets;
+            tone_onsets_expanded = data(i_animal).tone_onsets_expanded(1:num_trials);
+            spikes = data(i_animal).units.good(i_unit).spike_times;
+           
             
             [raster_data, computed_psth, found_spikes] = ...
-                extract_spike_times(tone_onsets, spikes, pre_stim_cycles, ...
-                post_stim_cycles, bin_size_cycles, ToneOn_ts);            
+                extract_spike_times(tone_onsets_expanded, spikes, pre_stim_cycles, ...
+                post_stim_cycles, bin_size_cycles, tone_onsets);            
            
     
             averaged_psth_data = averaged_psth_data + computed_psth;

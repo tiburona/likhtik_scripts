@@ -2,6 +2,10 @@ function generate_csv_table(id_list, field_list, filepath, data_dir, remove_stri
 % Generate a table with headings from id_list and subheadings from field_list
 % Remove remove_strings from the column names
 
+% This function was used to generate the events spreadsheet that clarified
+% the relationship between UnparsedData and TimeStamps and made it clear
+% that there was a discontinuity in how data are recorded.
+
 % Initialize an empty table
 T = table();
 
@@ -49,8 +53,6 @@ end
 % Write the table to a CSV file
 writetable(T, filepath);
 end
-
-
 
 
 function data = extract_data_for_id(id, field_list, data_dir)

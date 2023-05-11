@@ -1,4 +1,4 @@
-function contam_rate = processCluster(directory, cluster_id)
+function contam_rate = recalculate_contamination(directory, cluster_id)
     dbstop if error
     
     % assumes cluster_id is 0 indexed as in phy, changes it to Matlab
