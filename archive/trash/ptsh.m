@@ -1,14 +1,6 @@
 function spike_data = make_psth(data)
 
     dbstop if error
-
-    % Call the main function for both 60 and 150 trials
-    generate_psth_graphs(data, 60, '_60_trials');
-    generate_psth_graphs(data, 150, '_150_trials');
-end
-
-function generate_psth_graphs(data, num_trials, graph_name_suffix)
-    
     % Define the time window for the PSTH
     pre_stim_time = 0.05;
     post_stim_time = 0.65;
@@ -23,6 +15,12 @@ function generate_psth_graphs(data, num_trials, graph_name_suffix)
     control = {'IG160', 'IG163', 'IG176', 'IG178', 'IG180'};
     stressed = {'IG154', 'IG156', 'IG158', 'IG177', 'IG179'};
 
+    % Call the main function for both 60 and 150 trials
+    generate_psth_graphs(data, control, stressed, pre_stim_cycles, post_stim_cycles, bin_size_cycles, num_units_per_fig, 60, '_60_trials');
+    generate_psth_graphs(data, control, stressed, pre_stim_cycles, post_stim_cycles, bin_size_cycles, num_units_per_fig, 150, '_150_trials');
+end
+
+function generate_psth_graphs(data, control, stressed, pre_stim_cycles, post_stim_cycles, bin_size_cycles, num_units_per_fig, num_trials, graph_name_suffix)
 
     % Initialize figures for averaged PSTHs
     control_fig = initialize_figure('on');
@@ -54,14 +52,13 @@ function generate_psth_graphs(data, num_trials, graph_name_suffix)
 
         % Iterate through each unit for this animal
         for i_unit = 1:length(data(i_animal).units.good)
-            tone_onsets = data(i_animal).tone_onsets;
-            tone_onsets_expanded = data(i_animal).tone_onsets_expanded(1:num_trials);
-            spikes = data(i_animal).units.good(i_unit).spike_times;
-           
+            tone_onsets = data(i_animal).ToneOn_ts_expanded(1:num_trials);
+            spikes = data(i_animal).units.good{i_unit};
+            ToneOn_ts = data(i_animal).ToneOn_ts;
             
             [raster_data, computed_psth, found_spikes] = ...
-                extract_spike_times(tone_onsets_expanded, spikes, pre_stim_cycles, ...
-                post_stim_cycles, bin_size_cycles, tone_onsets);            
+                extract_spike_times(tone_onsets, spikes, pre_stim_cycles, ...
+                post_stim_cycles, bin_size_cycles, ToneOn_ts);            
            
     
             averaged_psth_data = averaged_psth_data + computed_psth;
@@ -86,15 +83,15 @@ function generate_psth_graphs(data, num_trials, graph_name_suffix)
               
                 % Save the figure if we've plotted the last unit or if we've reached the
                 % maximum number of units per figure
-  
                 if i_unit == length(data(i_animal).units.good) || mod(i_unit, num_units_per_fig) == 0
                     % Save the figure to memory
                     marker1 = idivide(int8(i_unit)-1, num_units_per_fig) * num_units_per_fig + 1;
-                    marker2 = min((idivide(int8(i_unit)-1, num_units_per_fig) + 1) * num_units_per_fig, length(data(i_animal).units.good));
+                    marker2 = min((idivide(int8(i_unit), num_units_per_fig)+1)*num_units_per_fig, length(data(i_animal).units.good));
                     filename = sprintf('Unit_%d_to_%d_%s%s', marker1, marker2, data(i_animal).animal, graph_name_suffix);
-                    save_and_close_fig(fig, filename, 'figure_title', strrep(filename, '_', ' '));
+                    p = fullfile('/Users/katie/likhtik/data/graphs', filename);
+                    saveas(fig, filename, 'fig');
+                    close(fig);  
                 end
-
             end
 
         end
@@ -114,8 +111,8 @@ function generate_psth_graphs(data, num_trials, graph_name_suffix)
     end
 
     % Save the control and stressed figures
-    save_and_close_fig(control_fig, ['Control_Averaged_PSTHs' graph_name_suffix], 'figure_title', ['Control Averaged PSTHs' strrep(graph_name_suffix, '_', ' ')])
-    save_and_close_fig(stressed_fig, ['Stressed_Averaged_PSTHs' graph_name_suffix], 'figure_title', ['STressed Averaged PSTHs' strrep(graph_name_suffix, '_', ' ')])
+    save_and_close_fig(control_fig, ['Control_Averaged_PSTHs' graph_name_suffix])
+    save_and_close_fig(stressed_fig, ['Stressed_Averaged_PSTHs' graph_name_suffix])
     
     % Plot the first tone PSTH for control and stressed groups
     
@@ -201,16 +198,9 @@ function [raster_data, computed_ptsh, found_spikes] = extract_spike_times(...
     % Compute the standard deviation of the psth for the entire data stream
     std_dev_firing_rate = std(stream_psth);
 
-   
-
     % Find the bins that fall within the tone on periods
     tone_on_bins = arrayfun(@(x) bins(bins >= x & bins <= (x + 29.05*30000)), ToneOn_ts, 'UniformOutput', false);
     tone_on_bins = unique([tone_on_bins{:}]);
-
-    for z = 1:length(ToneOn_ts)
-        % compute the mean psth for the 30 seconds immediately prior
-        
-    end
 
     % Remove bins during the tone on period
     stream_psth_filtered = stream_psth(~ismember(bins, tone_on_bins));
@@ -220,13 +210,7 @@ function [raster_data, computed_ptsh, found_spikes] = extract_spike_times(...
 
     % Compute the computed_ptsh
     bins = 0:bin_size_cycles:pre_stim_cycles+post_stim_cycles;
-
-    psth = cell2mat(cellfun(@(x) get_rates(x, bins, bin_size_cycles), psth_data, 'uni', 0))
     computed_ptsh = mean(cell2mat(cellfun(@(x) get_rates(x, bins, bin_size_cycles), psth_data, 'uni', 0)));
-    
- 
-
-    
 
     % Normalize the computed_ptsh
     computed_ptsh = (computed_ptsh - mean_firing_rate_ISI) / std_dev_firing_rate;
@@ -261,31 +245,11 @@ function fig = initialize_figure(visible)
     fig.Position = [0, 0, 800, 800];
 end
 
-function save_and_close_fig(fig, name, varargin)
-    % Check for optional arguments
-    figure_title = '';
-    for i = 1:length(varargin)
-        if ischar(varargin{i}) && strcmpi(varargin{i}, 'figure_title')
-            if i < length(varargin) && ischar(varargin{i+1})
-                figure_title = varargin{i+1};
-            else
-                error('No title provided after ''figure_title'' keyword.');
-            end
-        end
-    end
-
-    % Set the figure title if specified
-    if ~isempty(figure_title)
-        axes('Position', [0, 0, 1, 1], 'Xlim', [0, 1], 'Ylim', [0, 1], 'Box', 'off', 'Visible', 'off', 'Units', 'normalized', 'clipping', 'off');
-        text(0.5, 1, figure_title, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold');
-    end
-
-    % Save and close the figure
-    p = fullfile('/Users/katie/likhtik/data/graphs/psth', name);
-    saveas(fig, p, 'fig');
+function save_and_close_fig(fig, name)
+    p = fullfile('/Users/katie/likhtik/data/graphs', name);
+    saveas(fig, name, 'fig');
     close(fig);
 end
-
 
 
 function plot_and_save_first_tone_psth(data, group, group_name, bins, tone_onset)
