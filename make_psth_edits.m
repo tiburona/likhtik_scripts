@@ -135,33 +135,21 @@ function generate_psth_graphs(data, graph_dir, num_trials, graph_name_suffix)
     
     plot_and_save_first_tone_psth(data, graph_dir, control, 'Control', bins, tone_onset);
     plot_and_save_first_tone_psth(data, graph_dir, stressed, 'Stressed', bins, tone_onset);
-  
-end
 
-
-
-function first_tone_psth_data = first_tone_psth(data, group)
-    pre_stim_cycles = 30000 * 0.05; % 50 ms before stimulus onset
-    post_stim_cycles = 30000 * 0.65; % 650 ms after stimulus onset
-    bin_size_cycles = 30000 * 0.01; % 10 ms bin size
+    % Plot the group average PSTH for control and stressed groups
     
-    averaged_psth_data = [];
-    
-    for i_animal = 1:length(data)
-        if any(strcmp(data(i_animal).animal, group))
-            tone_onsets = data(i_animal).ToneOn_ts; % Use every entry in ToneOn_ts
-            spikes = data(i_animal).units.good{1};
-            
-            [~, computed_psth, ~] = extract_spike_times(tone_onsets, spikes, pre_stim_cycles, post_stim_cycles, bin_size_cycles, tone_onsets);
-            if isempty(averaged_psth_data)
-                averaged_psth_data = computed_psth;
-            else
-                averaged_psth_data = averaged_psth_data + computed_psth;
-            end
-        end
+    groups = {control; stressed};
+    group_names = {'Control'; 'Stressed'};
+
+    for g = 1:length(groups)
+        averaged_data = get_psth_averaged_over_unit_and_group(data, ...
+            groups{g}, @(animal) animal.tone_onsets_expanded(1:num_trials));
+        averaged_fig = initialize_figure('on');
+        plot_psth(bins(1:end-1)/30000, averaged_data, [group_names{g}, ' Group: Averaged PSTH ', num2str(num_trials), ' Trials'], tone_onset);
+        save_and_close_fig(averaged_fig, graph_dir, [group_names{g}, '_Averaged_PSTH_', num2str(num_trials), '_trials']);
     end
-    
-    first_tone_psth_data = averaged_psth_data / length(group);
+
+  
 end
 
 
