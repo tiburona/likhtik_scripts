@@ -1,175 +1,245 @@
-function make_psth_edits(data, graph_dir)
+function make_psth_edits(data, dir)
 
     dbstop if error   
     
-    [pn_data, in_data] = split_data(data);
-    data_sets = {data, pn_data, in_data};
-    dir_names = {'', 'PN', 'IN'};
-    trials = [60, 150];
+    sps = 30000; % samples per second
 
-    for i = 1:length(data_sets)
-        for j = 1:length(trials)
-            suffix_array = {dir_names{i}; num2str(trials(j)); 'trials'};
-            if isempty(dir_names{i})
-                suffix_array = suffix_array(2:end);             
-            end
-            new_graph_dir = safeMakeDir(fullfile(graph_dir, dir_names{i}));
-            generate_psth_graphs(data_sets{i}, new_graph_dir, trials(j), ...
-            ['_' strjoin(suffix_array, '_')])
-               
-        end
-    end
-
-end
-
-
-function generate_psth_graphs(data, graph_dir, num_trials, graph_name_suffix)
-    
     % Define the time window for the PSTH
     pre_stim_time = 0.05;
     post_stim_time = 0.65;
-    pre_stim_cycles = 30000*pre_stim_time; % 100 ms before stimulus onset
-    post_stim_cycles = 30000*post_stim_time; % 100 ms after stimulus onset
-    bin_size_cycles = 30000*.01; % 10 ms bin size
+    bin_size_time = 0.01;
 
-    % Set the number of units per figure
-    num_units_per_fig = 4;
+    C = struct( ...
+        'sps', sps,'pre_stim_time', pre_stim_time, 'post_stim_time', post_stim_time, ...
+        'pre_stim_samples', pre_stim_time*sps, 'post_stim_samples', post_stim_time*sps, ...
+        'bin_size_samples', bin_size_time*sps, 'num_units_per_fig', 4 ...
+        );
 
-    % Define control and stressed animal groups
-    control = {'IG160', 'IG163', 'IG176', 'IG178', 'IG180'};
-    stressed = {'IG154', 'IG156', 'IG158', 'IG177', 'IG179'};
+    C.bins = 0 : C.bin_size_samples : C.pre_stim_samples + C.post_stim_samples;
 
-    % Initialize figures for averaged PSTHs
-    control_fig = initialize_figure('on');
-    stressed_fig = initialize_figure('on');
+    % separate data into interneurons and pyramidal neurons
+    data_keys = {'all_units', 'PN', 'IN'};
+    [pn_data, in_data] = split_data(data);    
+    data_sets = {data, pn_data, in_data};
+    
+    % Choose different subsets of trials in the experiment to graph
+    trial_keys = {'30_trials', '60_trials', '150_trials', 'first_tones'}; 
+    trial_selectors = {1:30, 1:60, 1:150, 1:30:150};
 
-    control_count = 0;
-    stressed_count = 0;
-
-    % Iterate through each animal in the data struct
-    for i_animal = 1:length(data)
-
-        % Determine if the current animal is control or stressed
-        is_control = any(strcmp(data(i_animal).animal, control));
-        is_stressed = any(strcmp(data(i_animal).animal, stressed));
-        if is_control
-            control_count = control_count + 1;
-        elseif is_stressed
-            stressed_count = stressed_count + 1;
-        else
-            continue
+    psth_data = struct();
+    
+    for i = 1:length(trial_keys)
+        new_dir = fullfile(dir, ['portion_' trial_keys{i}]);
+        FunctionContainer.safeMakeDir(new_dir);
+        for j = 1:length(data_keys)
+            psth_data.(data_keys{j}) = collect_psth_data(data_sets{j}, trial_selectors{i}, C);
         end
+        unit_graphs(psth_data.('all_units'), new_dir, trial_keys(i), C);
+        avg_struct = average_graphs(psth_data, new_dir, trial_keys(i), C);
+        four_panel_graph(avg_struct, new_dir, trial_keys(i), C);
+    end
+end
 
-        % Initialize the averaged PSTH data for the current animal
-        averaged_psth_data = zeros(1, floor((pre_stim_cycles + post_stim_cycles) / bin_size_cycles));
-
-        % Define trial bins
-        bins = 0:bin_size_cycles:pre_stim_cycles+post_stim_cycles;
-        tone_onset = .05; % the beginning of the shaded box in the graphs
-
-        % Iterate through each unit for this animal
+function data = collect_psth_data(data, trials, constants)
+    for i_animal = 1:length(data)
         for i_unit = 1:length(data(i_animal).units.good)
-            tone_onsets = data(i_animal).tone_onsets;
-            tone_onsets_expanded = data(i_animal).tone_onsets_expanded(1:num_trials);
-            spikes = data(i_animal).units.good(i_unit).spike_times;
-           
-            
-            [raster_data, computed_psth, found_spikes] = ...
-                extract_spike_times(tone_onsets_expanded, spikes, pre_stim_cycles, ...
-                post_stim_cycles, bin_size_cycles, tone_onsets);            
-           
-            averaged_psth_data = averaged_psth_data + computed_psth;
-            
-            % If spikes were found, plot a raster for the unit
-            if found_spikes
+            unit = data(i_animal).units.good(i_unit);
+            unit = extract_spike_times(unit.spike_times, data(i_animal).tone_onsets_expanded(trials), ...
+                data(i_animal).tone_period_onsets, constants);
+            fields = fieldnames(unit);
+            for i_field = 1:numel(fields)
+                data(i_animal).units.good(i_unit).(fields{i_field}) = unit.(fields{i_field});
+            end
+        end
+    end
+end
+
+function unit = extract_spike_times(spikes, tone_onsets, tone_period_onsets, C)
+
+    found_spikes = false;
+
+    num_trials = length(tone_onsets);
+    raster_data = cell(num_trials, 1);
+    psth_data = cell(num_trials, 1);
+    normalized_ptsh = cell(num_trials, 1);
+    
+    % Compute normalization factors for each tone period
+    num_periods = length(tone_period_onsets);
+    norm_factors = cell(num_periods, 1);
+    for i = 1:num_periods
+        pre_tone_period_start = tone_period_onsets(i) - 30*C.sps;
+        pre_tone_bins = pre_tone_period_start:C.bin_size_samples:(tone_period_onsets(i) - 1);
+        pre_tone_rates = get_rates(spikes, pre_tone_bins, C); 
+        norm_factors{i} = [mean(pre_tone_rates), std(pre_tone_rates)]; 
+    end
+
+    for j = 1:num_trials
+        tone_on = tone_onsets(j);
+        start = tone_on - C.pre_stim_samples;
+        ned = tone_on + C.post_stim_samples;
+        trial_spikes = spikes(spikes >= start & spikes <= ned);
+
+        if ~isempty(trial_spikes)
+            trial_spikes = double(trial_spikes) - double(start);
+        end
+        psth_data{j} = trial_spikes';
+        raster_data{j} = (trial_spikes/C.sps)';
+        if ~isempty(trial_spikes); found_spikes = true; end
+
+        % Determine the tone period for the current trial
+        period_index = find(tone_period_onsets <= tone_on, 1, 'last');
+
+        % Calculate the rates and normalize the psth for the current trial
+        rate = get_rates(psth_data{j}, C.bins, C);
+        mean_rate = norm_factors{period_index}(1);
+        std_dev = norm_factors{period_index}(2);
+        normalized_ptsh{j} = (rate - mean_rate) / std_dev;
+    end
+    
+    normalized_ptsh = mean(cell2mat(normalized_ptsh));
+
+    unit.raster = raster_data;
+    unit.psth = normalized_ptsh;
+    unit.found_spikes = found_spikes;
+end
+
+function unit_graphs(data, graph_dir, name_tags, C)
+    for i_animal = 1:length(data)
+        for i_unit = 1:length(data(i_animal).units.good)
+            unit = data(i_animal).units.good(i_unit);
+            if unit.found_spikes
                 % Create a new figure for each unit
-                if mod(i_unit, num_units_per_fig) == 1
+                if mod(i_unit, C.num_units_per_fig) == 1
                     fig = figure('Visible', 'off');
                     fig.Position = [0, 0, 800, 800];
                 end
-                
+    
                 % Plot the raster for the current unit on the current figure
-                subplot(num_units_per_fig*2, 1, mod(i_unit-1, num_units_per_fig)*2+1);
-                plotSpikeRaster(raster_data, 'AutoLabel', true, ...
-                    'XLimForCell', [0 pre_stim_time + post_stim_time], ...
-                    'EventShading', [.05, .1]);
-                
+                subplot(C.num_units_per_fig*2, 1, mod(i_unit-1, C.num_units_per_fig)*2+1);
+                plotSpikeRaster(unit.raster, 'AutoLabel', true, 'XLimForCell', ...
+                    [0 C.pre_stim_time + C.post_stim_time], 'EventShading', [.05, .1]);
+    
                 % Plot the PSTH for the current unit underneath the raster plot
-
-                plot_psth(bins(1:end-1)/30000, computed_psth, '', tone_onset, 'subplot', [num_units_per_fig*2, 1, mod(i_unit-1, num_units_per_fig)*2+2])
-              
+                plot_psth(C.bins(1:end-1)/30000, unit.psth, '', C.pre_stim_time, 'subplot', ...
+                    [C.num_units_per_fig*2, 1, mod(i_unit-1, C.num_units_per_fig)*2+2])
+    
                 % Save the figure if we've plotted the last unit or if we've reached the
                 % maximum number of units per figure
-  
-                if i_unit == length(data(i_animal).units.good) || mod(i_unit, num_units_per_fig) == 0
-                    % Save the figure to memory
-                    marker1 = idivide(int8(i_unit)-1, num_units_per_fig) * num_units_per_fig + 1;
-                    marker2 = min((idivide(int8(i_unit)-1, num_units_per_fig) + 1) * num_units_per_fig, length(data(i_animal).units.good));
-                    filename = sprintf('Unit_%d_to_%d_%s%s', marker1, marker2, data(i_animal).animal, graph_name_suffix);
-                    save_and_close_fig(fig, graph_dir, filename, 'figure_title', strrep(filename, '_', ' '));
+    
+                if i_unit == length(data(i_animal).units.good) || mod(i_unit, C.num_units_per_fig) == 0
+                    marker1 = idivide(int8(i_unit)-1, C.num_units_per_fig) * C.num_units_per_fig + 1;
+                    marker2 = min((idivide(int8(i_unit)-1, C.num_units_per_fig) + 1) * C.num_units_per_fig, ...
+                        length(data(i_animal).units.good));
+                    fname_base = sprintf('unit_%d_to_%d_%s', marker1, marker2, data(i_animal).animal);
+                    [title, fname] = title_and_fname(fname_base, name_tags);
+                    save_and_close_fig(fig, graph_dir, fname, 'figure_title', title);
                 end
-
             end
-
         end
-        
-        % Calculate the averaged PSTH data for the current animal
-        averaged_psth_data = averaged_psth_data / length(data(i_animal).units.good);
-        
-        % Plot the averaged PSTH data for the current animal on the control or stressed figure
-        if is_control
-            figure(control_fig);
-            plot_psth(bins(1:end-1)/30000, averaged_psth_data, sprintf('Animal %s', data(i_animal).animal), tone_onset, 'subplot', [ceil(length(control) / 2), 2, control_count]);
-        else
-            figure(stressed_fig);
-            plot_psth(bins(1:end-1)/30000, averaged_psth_data, sprintf('Animal %s', data(i_animal).animal), tone_onset, 'subplot', [ceil(length(stressed) / 2), 2, stressed_count]);
+    end
+end
+
+function average_struct = average_graphs(data, dir, name_tags, C)
+    datasets = {'all_units', 'PN', 'IN'};
+    groups = {'control', 'stressed'};
+
+    % initialize a struct to collect the data to pass to the four panel graph function
+    groups_struct1 = cell2struct({[]; []}, groups);
+    groups_struct2 = cell2struct({[]; []}, groups);
+    average_struct = cell2struct({groups_struct1; groups_struct2}, datasets(2:3));
+
+    for i_dataset = 1:length(datasets)
+        psth_data = data.(datasets{i_dataset});
+        for i_group = 1:length(groups)
+            % select only the animals within the specified group
+            index = arrayfun(@(x) strcmp(x.group, groups{i_group}), psth_data);
+            group = psth_data(index);
+            group_fig = initialize_figure('on');
+            % graph the subplot for each individual animal's average
+            for i_animal=1:length(group)
+                animal = group(i_animal);
+                if ~isempty(animal.units.good)
+                    avg_psth_data = nanmean(cell2mat({animal.units.good.psth}'), 1);
+                    plot_psth(C.bins(1:end-1)/C.sps, avg_psth_data, sprintf('Animal %s', ...
+                    group(i_animal).animal), C.pre_stim_time, 'subplot', ...
+                    [ceil(length(group) / 2), 2, i_animal]);
+                    % save the individual animal's average to the data struct
+                    group(i_animal).avg_psth_data = avg_psth_data;
+                end
+            end
+            [title, fname] = title_and_fname('animal_averages_PSTH', horzcat(name_tags, groups{i_group}));
+            save_and_close_fig(group_fig, dir, fname, 'figure_title', title); 
+
+            % graph individual figures with the averages over animals within group for each neuron type
+            avg_fig = initialize_figure('on');
+            [title, fname] = title_and_fname('group_average_PSTH', horzcat(name_tags, datasets{i_dataset}, groups{i_group}));
+            avg_data = nanmean(cell2mat({group.avg_psth_data}'), 1);
+            plot_psth(C.bins(1:end-1)/C.sps, avg_data, title, C.pre_stim_time, 'figure', avg_fig);
+            save_and_close_fig(avg_fig, dir, fname); 
+
+            % save the data to pass to the four panel function         
+            average_struct.(datasets{i_dataset}).(groups{i_group}) = avg_data;
         end
-   
+    end    
+end
+
+function four_panel_graph(avg_data, dir, trial_num, C)
+    y_min = inf;
+    y_max = -inf;
+    
+    datasets = {'IN', 'PN'};
+    groups = {'control', 'stressed'};
+
+    % find y boundaries 
+    for i = 1:length(datasets)
+        for j = 1:length(groups)
+            if max(avg_data.(datasets{i}).(groups{j})) > y_max 
+                y_max = max(avg_data.(datasets{i}).(groups{j})); 
+            end
+            if min(avg_data.(datasets{i}).(groups{j})) < y_min 
+                y_min = min(avg_data.(datasets{i}).(groups{j})); 
+            end
+        end
     end
-
-    % Save the control and stressed figures
-    save_and_close_fig(control_fig, graph_dir, ['Control_Averaged_PSTHs' graph_name_suffix], 'figure_title', ['Control Averaged PSTHs' strrep(graph_name_suffix, '_', ' ')])
-    save_and_close_fig(stressed_fig, graph_dir, ['Stressed_Averaged_PSTHs' graph_name_suffix], 'figure_title', ['Stressed Averaged PSTHs' strrep(graph_name_suffix, '_', ' ')])
     
-    % Plot the first tone PSTH for control and stressed groups
-    
-    plot_and_save_first_tone_psth(data, graph_dir, control, 'Control', bins, tone_onset);
-    plot_and_save_first_tone_psth(data, graph_dir, stressed, 'Stressed', bins, tone_onset);
-
-    % Plot the group average PSTH for control and stressed groups
-    
-    groups = {control; stressed};
-    group_names = {'Control'; 'Stressed'};
-
-    for g = 1:length(groups)
-        averaged_data = get_psth_averaged_over_unit_and_group(data, ...
-            groups{g}, @(animal) animal.tone_onsets_expanded(1:num_trials));
-        averaged_fig = initialize_figure('on');
-        plot_psth(bins(1:end-1)/30000, averaged_data, [group_names{g}, ' Group: Averaged PSTH'], tone_onset);
-        save_and_close_fig(averaged_fig, graph_dir, [group_name, '_Averaged_PSTH']);
+    % graph four panels with averages within group and neuron type
+    four_panel_fig = initialize_figure('on');
+    for i_dataset = 1:length(datasets)
+        data_set = datasets{i_dataset};
+        for i_group = 1:length(groups)
+            group = groups{i_group};
+            [title, ~] = title_and_fname('', {data_set, group});
+            plot_psth(C.bins(1:end-1)/C.sps, avg_data.(data_set).(group), title, C.pre_stim_time, 'subplot', ...
+                [2, 2, (i_dataset-1)*2 + i_group], 'figure', four_panel_fig, 'y_dim', [y_min, y_max]);
+        end
     end
-
-  
+    [title, fname] = title_and_fname('four_panel_PSTH', trial_num);
+    save_and_close_fig(four_panel_fig, dir, fname, 'figure_title', title);
 end
-
-
-function plot_and_save_first_tone_psth(data, graph_dir, group, group_name, bins, tone_onset)
-    group_first_tone_psth_data = get_psth_averaged_over_unit_and_group(data, group, @(animal) animal.tone_onsets);
     
-    group_first_tone_fig = initialize_figure('on');
-    plot_psth(bins(1:end-1)/30000, group_first_tone_psth_data, [group_name, ' Group: First Tone PSTH'], tone_onset);
+function [title, fname] = title_and_fname(base, name_tags)
+    name = horzcat(base, name_tags);
+    fname = strjoin(name, '_');
+    title = title_case(strrep(fname, '_', ' '));
+    to_replace = {{'To', 'to'}};
+    for i = 1:length(to_replace)
+        title = strrep(title, to_replace{i}{1}, to_replace{i}{2});
+    end
     
-    save_and_close_fig(group_first_tone_fig, graph_dir, [group_name, '_First_Tone_PSTH']);
+    fname = [fname '.fig'];
 end
 
-function rates = get_rates(spikes, bins, bin_size_cycles)
-    rates = histcounts(spikes, bins) / (bin_size_cycles/30000); % spike counts per second
+function rates = get_rates(spikes, bins, C)
+    rates = histcounts(spikes, bins) / (C.bin_size_samples/C.sps); % spike counts per second
 end
 
-function plot_psth(time, psth_data, title_text, tone_onset, varargin)
-    % Check for optional arguments
+function plot_psth(time, psth_data, title_text, pre_stim_time, varargin)
+    % Process optional arguments
     is_subplot = false;
+    y_min = min(psth_data) - 0.1*abs(min(psth_data));
+    y_max = max(psth_data) + 0.1*abs(max(psth_data));
     subplot_args = [];
+    fig_handle = [];
     for i = 1:length(varargin)
         if ischar(varargin{i}) && strcmpi(varargin{i}, 'subplot')
             is_subplot = true;
@@ -178,7 +248,25 @@ function plot_psth(time, psth_data, title_text, tone_onset, varargin)
             else
                 error('No subplot arguments provided after ''subplot'' keyword.');
             end
+        elseif ischar(varargin{i}) && strcmpi(varargin{i}, 'y_dim')
+            if i < length(varargin) && isnumeric(varargin{i+1})
+                y_min = varargin{i+1}(1);
+                y_max = varargin{i+1}(2);
+            else
+                error('No y_max arguments provided after ''y_dim'' keyword.');
+            end
+        elseif ischar(varargin{i}) && strcmpi(varargin{i}, 'figure')
+            if i < length(varargin) && ishandle(varargin{i+1}) && strcmp(get(varargin{i+1},'type'),'figure')
+                fig_handle = varargin{i+1};
+            else
+                error('No valid figure handle provided after ''figure'' keyword.');
+            end
         end
+    end
+
+    % Select the figure if a handle is provided
+    if ~isempty(fig_handle)
+        figure(fig_handle);
     end
 
     % Create subplot if specified
@@ -197,101 +285,15 @@ function plot_psth(time, psth_data, title_text, tone_onset, varargin)
     xlabel('Time (s)');
     title(title_text);
     xlim([0 max(time)]);
-    y_min = min(psth_data) - 0.1*abs(min(psth_data));
-    y_max = max(psth_data) + 0.1*abs(max(psth_data));
     % Add the shaded translucent gray bar
     tone_duration = 0.05;
-    tone_start = tone_onset;
-    tone_end = tone_onset + tone_duration;
-    patch([tone_start tone_end tone_end tone_start], [y_min y_min y_max y_max], 'k', 'FaceAlpha', 0.2, 'EdgeColor', 'none');
+    tone_start = pre_stim_time;
+    tone_end = pre_stim_time + tone_duration;
+    ylim = [y_min - 0.1*abs(y_min), y_max + 0.1*abs(y_max)];
+    patch([tone_start tone_end tone_end tone_start], [ylim(1) ylim(1) ylim(2) ylim(2)], 'k', 'FaceAlpha', ...
+        0.2, 'EdgeColor', 'none');
     hold off;
 end
-
-function [raster_data, computed_ptsh, found_spikes] = extract_spike_times(...
-    tone_onsets, spikes, pre_stim_cycles, post_stim_cycles, ...
-    bin_size_cycles, ToneOn_ts)
-    found_spikes = false;
-    % Extract spike times for each unit
-    num_trials = length(tone_onsets);
-    raster_data = cell(num_trials, 1);
-    psth_data = cell(num_trials, 1);
-
-    for j = 1:num_trials
-        tone_on = tone_onsets(j);
-        start = tone_on - pre_stim_cycles;
-        en = tone_on + post_stim_cycles;
-        trial_spikes = spikes(spikes >= start & spikes <= en);
-
-        if ~isempty(trial_spikes)
-            trial_spikes = double(trial_spikes) - double(start);
-        end
-        psth_data{j} = trial_spikes';
-        raster_data{j} = (trial_spikes/30000)';
-        if ~isempty(trial_spikes); found_spikes = true; end
-    end
-
-    % Compute the bins for the entire data stream 
-    % lead in time is arbitrary
-    bins = (tone_onsets(1) - 10*30000):bin_size_cycles:(tone_onsets(end) + 0.05*30000);
-
-    % Compute the psth for the entire data stream
-    stream_psth = get_rates(spikes, bins, bin_size_cycles);
-
-    % Compute the standard deviation of the psth for the entire data stream
-    std_dev_firing_rate = std(stream_psth);
-
-    % Find the bins that fall within the tone on periods
-    tone_on_bins = arrayfun(@(x) bins(bins >= x & bins <= (x + 29.05*30000)), ToneOn_ts, 'UniformOutput', false);
-    tone_on_bins = unique([tone_on_bins{:}]);
-
-    % Remove bins during the tone on period
-    stream_psth_filtered = stream_psth(~ismember(bins, tone_on_bins));
-
-    % Compute the mean firing rate for the inter-stimulus interval
-    mean_firing_rate_ISI = mean(stream_psth_filtered);
-
-    % Compute the computed_ptsh
-    bins = 0:bin_size_cycles:pre_stim_cycles+post_stim_cycles;
-    computed_ptsh = mean(cell2mat(cellfun(@(x) get_rates(x, bins, bin_size_cycles), psth_data, 'uni', 0)));
-
-    % Normalize the computed_ptsh
-    computed_ptsh = (computed_ptsh - mean_firing_rate_ISI) / std_dev_firing_rate;
-end
-
-
-
-function averaged_data = get_psth_averaged_over_unit_and_group(data, group, func)
-
-    pre_stim_cycles = 30000 * 0.05; % 50 ms before stimulus onset
-    post_stim_cycles = 30000 * 0.65; % 650 ms after stimulus onset
-    bin_size_cycles = 30000 * 0.01; % 10 ms bin size
-
-    
-    averaged_psth_data = [];
-
-    counter = 0;
-    
-    for i_animal = 1:length(data)
-        if any(strcmp(data(i_animal).animal, group))
-            tone_onsets = func(data(i_animal)); 
-            for j_unit = 1:length(data(i_animal).units.good)
-                counter = counter + 1;
-                spikes = data(i_animal).units.good(j_unit).spike_times;
-                [~, computed_psth, ~] = extract_spike_times(tone_onsets, spikes, ...
-                pre_stim_cycles, post_stim_cycles, bin_size_cycles, tone_onsets);
-                if isempty(averaged_psth_data)
-                    averaged_psth_data = computed_psth;
-                else
-                    averaged_psth_data = averaged_psth_data + computed_psth;
-                end
-            end   
-        end
-    end
-    
-    averaged_data = averaged_psth_data / counter;
-
-end
-
 
 function fig = initialize_figure(visible)
     fig = figure('Visible', visible);
@@ -313,8 +315,10 @@ function save_and_close_fig(fig, graph_dir, name, varargin)
 
     % Set the figure title if specified
     if ~isempty(figure_title)
-        axes('Position', [0, 0, 1, 1], 'Xlim', [0, 1], 'Ylim', [0, 1], 'Box', 'off', 'Visible', 'off', 'Units', 'normalized', 'clipping', 'off');
-        text(0.5, 1, figure_title, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', 'FontSize', 14, 'FontWeight', 'bold');
+        axes('Position', [0, 0, 1, 1], 'Xlim', [0, 1], 'Ylim', [0, 1], 'Box', 'off', 'Visible', ...
+            'off', 'Units', 'normalized', 'clipping', 'off');
+        text(0.5, 1, figure_title, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'top', ...
+            'FontSize', 14, 'FontWeight', 'bold');
     end
 
     % Save and close the figure
@@ -322,7 +326,6 @@ function save_and_close_fig(fig, graph_dir, name, varargin)
     saveas(fig, p, 'fig');
     close(fig);
 end
-
 
 function [data_below_cutoff, data_above_cutoff] = split_data(data)
     % Initialize the output structures
@@ -351,3 +354,6 @@ function [data_below_cutoff, data_above_cutoff] = split_data(data)
     end
 end
 
+function title_case_str = title_case(str)
+    title_case_str = regexprep(str, '(?<=\s|^)([a-z])', '${upper($1)}');
+end

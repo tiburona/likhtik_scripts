@@ -77,7 +77,7 @@ function data = populate_post_phy_data_structure(animal_dir, animal_data, ToneOn
     
     tone_onsets_expanded = zeros(1, length(data.tone_period_onsets) * tones_per_period);
     for j = 1:length(data.tone_period_onsets)
-        start_of_period = data.tone_period_onsets(j);
+        start_of_period = data.tone_onsets(j);
         starts_of_tones = (start_of_period:1*sampling_rate:(tones_per_period-1)*sampling_rate+start_of_period);
         tone_onsets_expanded((j-1)*tones_per_period+1:(j-1)*tones_per_period+30) = starts_of_tones;
     end

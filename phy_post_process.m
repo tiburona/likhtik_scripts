@@ -17,7 +17,6 @@ for i=1:length(mice)
    clear animal_data
 
     mousedir = ['/Users/Katie/likhtik/data/single_cell_data/IG' mice{i}];
-    animal_data.NS6 = openNSx('read', fullfile(mousedir, 'Safety.ns6'), 'uv');
     animal_data.NEV =  openNEV('read', fullfile(mousedir, 'Safety.nev'));
     save(['/Users/katie/likhtik/data/events/animal_data_' mice{i} '.mat'],  '-struct', 'animal_data', '-v7.3');
     if str2num(mice{i}) > 165; toneOnCode = 65436; end

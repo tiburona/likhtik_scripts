@@ -1,0 +1,2 @@
+After running Kilosort and manually curating electrodes in Phy, the next script to run is phy_post_process.m.  This
+calls populate_post_phy_data_structure, and creates a data structure with the fields expected by further processes
