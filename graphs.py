@@ -8,6 +8,7 @@ import os
 import matplotlib.pyplot as plt
 from matplotlib import patches
 from copy import deepcopy
+from matplotlib.gridspec import GridSpec
 
 
 def cache_method(method):
@@ -63,21 +64,54 @@ class Animal:
             fft = self.get_average('fft', opts)
         return Math.frequencies(fft, opts['lags'])
 
+    from matplotlib.gridspec import GridSpec
+
     def plot_units(self, opts):
         multi = 2 if opts['data_type'] == 'psth' else 1
 
         for i in range(0, len(self.units['good']), opts['units_in_fig']):
-            fig = plt.figure(figsize=(10, 5*opts['units_in_fig']))
-            for j in range(i, min(i + opts['units_in_fig'], len(self.units))):
-                self.units['good'][j].plot_unit(fig, (j % opts['units_in_fig']) * multi + 1, multi, opts)
+            n_subplots = min(opts['units_in_fig'], len(self.units['good']) - i)
+            fig = plt.figure(figsize=(10, 3 * multi * n_subplots))
+
+            # Create a GridSpec for n_subplots * multi rows and 1 column
+            gs = GridSpec(n_subplots * multi, 1, figure=fig)
+
+            for j in range(i, i + n_subplots):
+                if opts['data_type'] == 'psth':
+                    # Add two subplots in the (2 * (j - i)) and (2 * (j - i) + 1)-th slots of the grid
+                    ax1 = fig.add_subplot(gs[2 * (j - i), 0])
+                    ax2 = fig.add_subplot(gs[2 * (j - i) + 1, 0])
+                    self.units['good'][j].plot_unit([ax1, ax2], opts)
+                elif opts['data_type'] == 'autocorr':
+                    # Add one subplot in the (j - i)-th slot of the grid
+                    ax = fig.add_subplot(gs[j - i, 0])
+                    self.units['good'][j].plot_unit([ax], opts)
 
             marker1 = i + 1
-            marker2 = min(i + opts['units_in_fig'], len(self.units))
+            marker2 = i + n_subplots
 
             fname = f"{self.name}_unit_{marker1}_to_{marker2}.png"
-            fig.suptitle(f"{self.name} Units {marker1} to {marker2}")
+            fig.suptitle(f"{self.name} Units {marker1} to {marker2}", weight='bold',
+                         y=.95)
+
+            if opts['data_type'] == 'psth':
+                xlabel = 'Time (s)'
+                ylabel = ''
+            elif opts['data_type'] == 'autocorr':
+                xlabel = 'Lags (s)'
+                ylabel = 'Autocorrelation'
+
+            # Add a big subplot without frame and set the x and y labels for this subplot
+            big_subplot = fig.add_subplot(111, frame_on=False)
+            big_subplot.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+            big_subplot.set_xlabel(xlabel, labelpad=30)  # change labelpad to adjust label position
+            big_subplot.set_ylabel(ylabel, labelpad=30)  # change labelpad to adjust label position
+
             path = os.path.join(opts['graph_dir'], f"{opts['data_type']}_{'_'.join([str(t) for t in opts['trials']])}")
             os.makedirs(path, exist_ok=True)
+
+            plt.subplots_adjust(hspace=0.5)  # Add space between subplots
+
             fig.savefig(os.path.join(path, fname))
             plt.close(fig)
 
@@ -141,67 +175,58 @@ class Unit:
     def get_frequencies(self, opts):
         return Math.frequencies(self.get_fft(opts), opts['lags'])
 
-    def plot_unit(self, fig, subplot_position, multi, opts):
+    def plot_unit(self, axes, opts):
 
         if opts['data_type'] == 'psth':
-            ax_r = fig.add_subplot(opts['units_in_fig']*mulit, 1, subplot_position)
-            graph_r = Graph(ax_r)
-            graph_r.plot_raster(self.get_trials_spikes(opts), opts)
+            subplot = Subplot(axes[0])
+            subplot.plot_raster(self.get_trials_spikes(opts), opts)
 
-        ax = fig.add_subplot(opts['units_in_fig']*multi, 1, subplot_position + 1)
-        graph = Graph(ax)
+        subplot = Subplot(axes[-1])
         if opts['data_type'] == 'psth':
-            graph.plot_psth(self.get_psth(opts), opts)
+            subplot.plot_psth(self.get_psth(opts), opts)
         elif opts['data_type'] == 'autocorr':
-            graph.plot_autocorr(self.get_autocorr(opts)[1:], opts)
+            subplot.plot_autocorr(self.get_autocorr(opts)[1:], opts)
 
-
-class Graph:
+class Subplot:
     def __init__(self, ax):
         self.ax = ax
 
-    class Graph:
-        def __init__(self, ax):
-            self.ax = ax
+    def set_limits_and_ticks(self, x_min, x_max, x_tick_min, x_step, y_min=None, y_max=None):
+        self.ax.set_xlim(x_min, x_max)
+        self.ax.set_xticks(np.arange(x_tick_min, x_max, step=x_step))
+        if y_min is not None and y_max is not None:
+            self.ax.set_ylim(y_min, y_max)
 
-        def set_limits_and_ticks(self, x_min, x_max, x_step, y_min=None, y_max=None):
-            self.ax.set_xlim(x_min, x_max)
-            self.ax.set_xticks(np.arange(x_min, x_max, step=x_step))
-            if y_min is not None and y_max is not None:
-                self.ax.set_ylim(y_min, y_max)
+    def set_labels_and_titles(self, x_label='', y_label='', title=''):
+        self.ax.set_xlabel(x_label)
+        self.ax.set_ylabel(y_label)
+        self.ax.set_title(title)
 
-        def set_labels_and_titles(self, x_label='', y_label='', title=''):
-            self.ax.set_xlabel(x_label)
-            self.ax.set_ylabel(y_label)
-            self.ax.set_title(title)
+    def plot_raster(self, data, opts):
+        for i, spiketrain in enumerate(data):
+            for spike in spiketrain:
+                self.ax.vlines(spike, i + .5, i + 1.5)
+        self.set_labels_and_titles(y_label='Trial')
+        self.set_limits_and_ticks(-opts['pre_stim_time'], opts['post_stim_time'], opts['tick_step'], .5, len(data) + .5)
+        self.ax.add_patch(plt.Rectangle((0, self.ax.get_ylim()[0]), 0.05, self.ax.get_ylim()[1] - self.ax.get_ylim()[0],
+                                        facecolor='gray', alpha=0.3))
 
-        def plot_raster(self, data, opts):
-            for i, spiketrain in enumerate(data):
-                for spike in spiketrain:
-                    self.ax.vlines(spike, i + .5, i + 1.5)
-            self.set_limits_and_ticks(-opts['pre_stim_time'], opts['post_stim_time'], opts['tick_step'], .5,
-                                      len(data) + .5)
-            self.ax.add_patch(plt.Rectangle((0, self.ax.get_ylim()[0]), 0.05,
-                                            self.ax.get_ylim()[1] - self.ax.get_ylim()[0],
-                                            facecolor='gray', alpha=0.3))
+    def plot_bar(self, data, width, x_min, x_max, num, x_tick_min, x_step, y_min=None, y_max=None, x_label='', y_label='',
+                 color='k', title=''):
+        x = np.linspace(x_min, x_max, num=num)
+        self.ax.bar(x, data, width=width, color=color)
+        self.set_limits_and_ticks(x_min, x_max, x_tick_min, x_step, y_min, y_max)
+        self.set_labels_and_titles(x_label=x_label, y_label=y_label, title=title)
 
-        def plot_bar(self, data, width, x_min, x_max, num, x_step, y_min=None, y_max=None, x_label='', y_label='',
-                     color='k', title=''):
-            x = np.linspace(x_min, x_max, num=num)
-            self.ax.bar(x, data, width=width, color=color)
-            self.set_limits_and_ticks(x_min, x_max, x_step, y_min, y_max)
-            self.set_labels_and_titles(x_label=x_label, y_label=y_label, title=title)
+    def plot_psth(self, data, opts):
+        self.plot_bar(data, width=opts['bin_size_time'], x_min=-opts['pre_stim_time'], x_max=opts['post_stim_time'],
+                      num=len(data), x_tick_min=0, x_step=opts['tick_step'], y_label='Relative Spike Rate (Hz)')
+        self.ax.fill_betweenx([min(data), max(data)], 0, 0.05, color='k', alpha=0.2)
 
-        def plot_psth(self, data, opts):
-            self.plot_bar(data, width=opts['bin_size_time'], x_min=-opts['pre_stim_time'], x_max=opts['post_stim_time'],
-                          num=len(data), x_step=opts['tick_step'], x_label='Time (s)',
-                          y_label='Relative Spike Rate (Hz)', title='PSTH Plot')
-            self.ax.fill_betweenx([min(data), max(data)], 0, 0.05, color='k', alpha=0.2)
-
-        def plot_autocorr(self, data, opts):
-            self.plot_bar(data, width=opts['bin_size_time'], x_min=opts['bin_size_time'],
-                          x_max=opts['lags'] * opts['bin_size_time'], num=opts['lags'], x_step=opts['bin_size_time'],
-                          y_min=0, y_max=max(data) + .05, x_label='Lags', y_label='Autocorrelation')
+    def plot_autocorr(self, data, opts):
+        self.plot_bar(data, width=opts['bin_size_time'], x_min=opts['bin_size_time'],
+                      x_max=opts['lags'] * opts['bin_size_time'], num=opts['lags'], x_tick_min=opts['tick_step'],
+                      x_step=opts['tick_step'], y_min=0, y_max=max(data) + .05)
 
 
 class Math:
@@ -241,12 +266,12 @@ base_opts = {'graph_dir': '/Users/katie/likhtik/data/graphs', 'units_in_fig': 4}
 psth_opts = {**base_opts, **{'data_type': 'psth', 'pre_stim_time': 0.05, 'post_stim_time': 0.65,
                              'bin_size_time': 0.01, 'trials': (0, 150), 'tick_step': 0.1}}
 autocorr_opts = {**base_opts, **{'data_type': 'autocorr', 'pre_stim_time': 0.0, 'post_stim_time': 30.0,
-                                 'bin_size_time': 0.01, 'trials': (0, 150, 30), 'lags': 100}}
+                                 'bin_size_time': 0.01, 'trials': (0, 150, 30), 'lags': 100, 'tick_step': 0.1}}
 fft_opts = {**autocorr_opts, **{'data_type': 'fft', 'bin_size_time': 0.001}}
 
 
 for animal in animals:
-    # animal.plot_units(psth_opts)
+    animal.plot_units(psth_opts)
     animal.plot_units(autocorr_opts)
 
 
