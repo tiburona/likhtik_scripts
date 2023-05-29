@@ -1,14 +1,15 @@
-import scipy.io as sio
-from collections import defaultdict as dd
 from bisect import bisect_left as bs_left, bisect_right as bs_right
-import numpy as np
-from statsmodels.tsa.stattools import acf
+from collections import defaultdict as dd
+from copy import deepcopy
 import functools
 import os
-import matplotlib.pyplot as plt
+
+import numpy as np
+import scipy.io as sio
 from matplotlib import patches
-from copy import deepcopy
+import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
+from statsmodels.tsa.stattools import acf
 
 
 def cache_method(method):
@@ -40,8 +41,11 @@ class Group:
         self.animals = animals if animals else []
 
     @cache_method
-    def get_average(self, data_type, opts):
+    def get_average(self, data_type, opts):  # sometimes you might want to average a data type other than what's in opts
         return np.mean(np.array([animal.get_average(data_type, opts) for animal in self.animals]), axis=0)
+
+    def plot_animals(self, data_type):
+        Plotter(opts, data_type=data_type).plot_units(self)
 
 
 class Animal:
@@ -57,111 +61,80 @@ class Animal:
         return np.mean(np.array([getattr(unit, f"get_{data_type}")(opts) for unit in self.units['good']]), axis=0)
 
     @cache_method
-    def get_frequencies(self, opts):
-        if opts['method'] == 'autocorr':
-            fft = np.fft.fft(self.get_average('autocorr'), opts)
-        elif opts['method'] == 'xform':
+    def get_spectrum(self, method, opts):
+        if method == 'autocorr':
+            fft = np.fft.fft(self.get_average('autocorr'))
+        elif method == 'xform':
             fft = self.get_average('fft', opts)
-        return Math.frequencies(fft, opts['lags'])
-
-    from matplotlib.gridspec import GridSpec
+        return SignalProcessing.compute_one_sided_spectrum(fft, opts['lags'])
 
     def plot_units(self, opts):
-        multi = 2 if opts['data_type'] == 'psth' else 1
-
-        for i in range(0, len(self.units['good']), opts['units_in_fig']):
-            n_subplots = min(opts['units_in_fig'], len(self.units['good']) - i)
-            fig = plt.figure(figsize=(10, 3 * multi * n_subplots))
-
-            # Create a GridSpec for n_subplots * multi rows and 1 column
-            gs = GridSpec(n_subplots * multi, 1, figure=fig)
-
-            for j in range(i, i + n_subplots):
-                if opts['data_type'] == 'psth':
-                    # Add two subplots in the (2 * (j - i)) and (2 * (j - i) + 1)-th slots of the grid
-                    ax1 = fig.add_subplot(gs[2 * (j - i), 0])
-                    ax2 = fig.add_subplot(gs[2 * (j - i) + 1, 0])
-                    self.units['good'][j].plot_unit([ax1, ax2], opts)
-                elif opts['data_type'] == 'autocorr':
-                    # Add one subplot in the (j - i)-th slot of the grid
-                    ax = fig.add_subplot(gs[j - i, 0])
-                    self.units['good'][j].plot_unit([ax], opts)
-
-            marker1 = i + 1
-            marker2 = i + n_subplots
-
-            fname = f"{self.name}_unit_{marker1}_to_{marker2}.png"
-            fig.suptitle(f"{self.name} Units {marker1} to {marker2}", weight='bold',
-                         y=.95)
-
-            if opts['data_type'] == 'psth':
-                xlabel = 'Time (s)'
-                ylabel = ''
-            elif opts['data_type'] == 'autocorr':
-                xlabel = 'Lags (s)'
-                ylabel = 'Autocorrelation'
-
-            # Add a big subplot without frame and set the x and y labels for this subplot
-            big_subplot = fig.add_subplot(111, frame_on=False)
-            big_subplot.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-            big_subplot.set_xlabel(xlabel, labelpad=30)  # change labelpad to adjust label position
-            big_subplot.set_ylabel(ylabel, labelpad=30)  # change labelpad to adjust label position
-
-            path = os.path.join(opts['graph_dir'], f"{opts['data_type']}_{'_'.join([str(t) for t in opts['trials']])}")
-            os.makedirs(path, exist_ok=True)
-
-            plt.subplots_adjust(hspace=0.5)  # Add space between subplots
-
-            fig.savefig(os.path.join(path, fname))
-            plt.close(fig)
+        Plotter(opts).plot_units(self)
 
 
 class Unit:
-    def __init__(self, animal, category, spike_times):
+    def __init__(self, animal, category, spike_times, neuron_type=None):
         self.animal = animal
         self.category = category
         self.spike_times = spike_times
         self.animal.units[category].append(self)
         self.index = self.animal.units[category].index(self)
+        self.neuron_type = neuron_type
 
+    @cache_method
     def find_spikes(self, start, stop):
         return self.spike_times[bs_left(self.spike_times, start): bs_right(self.spike_times, stop)]
 
-    @cache_method
     def get_trials_spikes(self, opts):
-        trials = opts['trials']
-        if len(opts['trials']) == 2:
-            starts = self.animal.tone_onsets_expanded[trials[0]:trials[1]]
-        elif len(opts['trials']) == 3:
-            starts = self.animal.tone_onsets_expanded[trials[0]:trials[1]:trials[2]]
-
-        return [
-            [(spike - start)/30000 for spike in
-             self.find_spikes(start - opts['pre_stim_time'] * 30000, start + opts['post_stim_time'] * 30000)]
-            for start in starts]
+        return [[(spike - start)/30000 for spike in
+                 self.find_spikes(start - opts['pre_stim'] * 30000, start + opts['post_stim'] * 30000)]
+                for start in self.animal.tone_onsets_expanded[slice(*opts['trials'])]]
 
     @cache_method
-    def get_hist(self, spikes, opts):
-        pre_stim = opts['pre_stim_time']
-        post_stim = opts['post_stim_time']
-        bin_size = opts['bin_size_time']
-        num_bins = int((post_stim + pre_stim) / bin_size)
-        return np.histogram(spikes, bins=num_bins, range=(-pre_stim, post_stim))
+    def get_hist(self, spikes, opts, num_bins=None, spike_range=None):
+        num_bins = num_bins if num_bins is not None else int((opts['post_stim'] + opts['pre_stim']) / opts['bin_size'])
+        spike_range = spike_range if spike_range is not None else (-opts['pre_stim'], opts['post_stim'])
+        hist = np.histogram(spikes, bins=num_bins, range=spike_range)
+        return hist
 
     @cache_method
-    def get_rates(self, spikes, opts):
-        return self.get_hist(spikes, opts)[0] / opts['bin_size_time']
+    def get_rates(self, spikes, opts, num_bins=None, spike_range=None):
+        rates = self.get_hist(spikes, opts, num_bins=num_bins, spike_range=spike_range)[0] / opts['bin_size']
+        return rates
 
+    @cache_method
     def get_pretone_means(self, opts):
-        return [np.mean(np.array(self.get_rates(self.find_spikes(onset-30*30000, onset-1), opts)))
-                for onset in self.animal.tone_period_onsets]
+        rate_set = []
+        for onset in self.animal.tone_period_onsets:
+            start = onset - 30 * 30000
+            stop = onset - 1
+            spikes = self.find_spikes(onset - 30 * 30000, onset - 1)
+            rates = self.get_rates(spikes, opts, spike_range=(start, stop), num_bins=int(30/opts['bin_size']))
+            rate_set.append(rates)
+        return np.mean(np.array(rate_set), axis=1)
 
-    # TODO: implement subtracting pretone means
+
     @cache_method
     def get_psth(self, opts):
         pretone_means = self.get_pretone_means(opts)
-        rates = [self.get_rates(spikes, opts) for spikes in self.get_trials_spikes(opts)]
-        return np.mean(np.array(rates), axis=0)
+
+        # Handle slice provided in opts['trials']
+        trials_slice = slice(*opts['trials'])
+        trials_indices = list(range(150))[trials_slice]
+
+        # Calculate rates and subtract corresponding pretone mean
+        trials = []
+        for i, trial_index in enumerate(trials_indices):
+            spikes = self.get_trials_spikes(opts)[trial_index]
+            rates = self.get_rates(spikes, opts)
+            # Determine which tone period the trial belongs to
+            tone_period_index = trial_index // 30  # since every 30 trials are in the same tone period
+            pretone_mean = pretone_means[tone_period_index]
+            # Subtract pretone mean from rate
+            adjusted_rates = rates - pretone_mean
+            trials.append(adjusted_rates)
+
+        return np.mean(np.array(trials), axis=0)
 
     @cache_method
     def get_autocorr(self, opts):
@@ -172,22 +145,93 @@ class Unit:
         return np.fft.fft(self.get_autocorr(opts))
 
     @cache_method
-    def get_frequencies(self, opts):
-        return Math.frequencies(self.get_fft(opts), opts['lags'])
+    def get_spectrum(self, opts):
+        return SignalProcessing.compute_one_sided_spectrum(self.get_fft(opts))
 
-    def plot_unit(self, axes, opts):
+    @staticmethod
+    def set_var(var, expression):
+        return var if var is not None else expression
 
-        if opts['data_type'] == 'psth':
-            subplot = Subplot(axes[0])
-            subplot.plot_raster(self.get_trials_spikes(opts), opts)
 
-        subplot = Subplot(axes[-1])
-        if opts['data_type'] == 'psth':
-            subplot.plot_psth(self.get_psth(opts), opts)
-        elif opts['data_type'] == 'autocorr':
-            subplot.plot_autocorr(self.get_autocorr(opts)[1:], opts)
+class Plotter:
+    def __init__(self, opts, data_type=None):
+        self.opts = opts
+        self.dtype = data_type if data_type is not None else opts['data_type']
+        self.labels = {'psth': ('Time (s)', 'Firing Rate (Hz'), 'autocorr': ('Lags (s)',  'Autocorrelation'),
+                       'spectrum': ('Frequencies (Hz)',  'One-Sided Spectrum')}
 
-class Subplot:
+    def plot_animals(self, group):
+        n_animals = len(group.animals)
+        fig = plt.figure(figsize=(10, 3 * n_animals))
+
+        for i, animal in enumerate(group.animals):
+            average_data = animal.get_average(data_type, self.opts)
+            row = i // 2
+            col = i % 2
+            ax = fig.add_subplot(n_animals // 2 + n_animals % 2, 2, row * 2 + col + 1)
+            subplotter = Subplotter(ax)
+            getattr(subplotter, f"plot_{self.dtype}")(average_data, self.opts)
+            ax.set_xlabel(self.labels[self.dtype])
+            ax.set_ylabel(self.labels[self.dtype])
+            ax.set_title(f"{animal.name} {self.dtype}")
+
+        fig.tight_layout()
+
+        path = os.path.join(opts['graph_dir'], f"{self.dtype}_{'_'.join([str(t) for t in opts['trials']])}")
+        os.makedirs(path, exist_ok=True)
+
+        fname = f"group_{data_type}.png"
+        fig.savefig(os.path.join(path, fname))
+        plt.close(fig)
+
+    def plot_units(self, animal):
+        multi = 2 if self.dtype == 'psth' else 1
+
+        for i in range(0, len(animal.units['good']), self.opts['units_in_fig']):
+            n_subplots = min(self.opts['units_in_fig'], len(animal.units['good']) - i)
+            fig = plt.figure(figsize=(10, 3 * multi * n_subplots))
+
+            # Create a GridSpec for n_subplots * multi rows and 1 column
+            gs = GridSpec(n_subplots * multi, 1, figure=fig)
+
+            for j in range(i, i + n_subplots):
+                if self.dtype == 'psth':
+                    # Add two subplots in the (2 * (j - i)) and (2 * (j - i) + 1)-th slots of the grid
+                    axes = [fig.add_subplot(gs[2 * (j - i), 0]), fig.add_subplot(gs[2 * (j - i) + 1, 0])]
+                elif self.dtype in ['autocorr', 'spectrum']:
+                    # Add one subplot in the (j - i)-th slot of the grid
+                    axes = [fig.add_subplot(gs[j - i, 0])]
+                self.plot_unit(animal.units['good'][j], axes)
+
+            marker1 = i + 1
+            marker2 = i + n_subplots
+
+            fname = f"{animal.name}_unit_{marker1}_to_{marker2}.png"
+            fig.suptitle(f"{animal.name} Units {marker1} to {marker2}", weight='bold',
+                         y=.95)
+
+            # Add a big subplot without frame and set the x and y labels for this subplot
+            big_subplot = fig.add_subplot(111, frame_on=False)
+            big_subplot.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+            big_subplot.set_xlabel(self.labels[opts['data_type'][0]], labelpad=30)  # change labelpad to adjust position
+            big_subplot.set_ylabel(self.labels[opts['data_type'][1]], labelpad=30)
+
+            path = os.path.join(opts['graph_dir'], f"{opts['data_type']}_{'_'.join([str(t) for t in opts['trials']])}")
+            os.makedirs(path, exist_ok=True)
+
+            plt.subplots_adjust(hspace=0.5)  # Add space between subplots
+
+            fig.savefig(os.path.join(path, fname))
+            plt.close(fig)
+
+    def plot_unit(self, unit, axes):
+        if self.opts['data_type'] == 'psth':
+            Subplotter(axes[0]).plot_raster(unit.get_trials_spikes(self.opts), self.opts)
+        subplotter = Subplotter(axes[-1])
+        getattr(subplotter, f"plot_{self.dtype}")(getattr(unit, f"get_{self.dtype}")(self.opts), self.opts)
+
+
+class Subplotter:
     def __init__(self, ax):
         self.ax = ax
 
@@ -207,7 +251,7 @@ class Subplot:
             for spike in spiketrain:
                 self.ax.vlines(spike, i + .5, i + 1.5)
         self.set_labels_and_titles(y_label='Trial')
-        self.set_limits_and_ticks(-opts['pre_stim_time'], opts['post_stim_time'], opts['tick_step'], .5, len(data) + .5)
+        self.set_limits_and_ticks(-opts['pre_stim'], opts['post_stim'], opts['tick_step'], .5, len(data) + .5)
         self.ax.add_patch(plt.Rectangle((0, self.ax.get_ylim()[0]), 0.05, self.ax.get_ylim()[1] - self.ax.get_ylim()[0],
                                         facecolor='gray', alpha=0.3))
 
@@ -219,24 +263,47 @@ class Subplot:
         self.set_labels_and_titles(x_label=x_label, y_label=y_label, title=title)
 
     def plot_psth(self, data, opts):
-        self.plot_bar(data, width=opts['bin_size_time'], x_min=-opts['pre_stim_time'], x_max=opts['post_stim_time'],
+        self.plot_bar(data, width=opts['bin_size'], x_min=-opts['pre_stim'], x_max=opts['post_stim'],
                       num=len(data), x_tick_min=0, x_step=opts['tick_step'], y_label='Relative Spike Rate (Hz)')
         self.ax.fill_betweenx([min(data), max(data)], 0, 0.05, color='k', alpha=0.2)
 
     def plot_autocorr(self, data, opts):
-        self.plot_bar(data, width=opts['bin_size_time'], x_min=opts['bin_size_time'],
-                      x_max=opts['lags'] * opts['bin_size_time'], num=opts['lags'], x_tick_min=opts['tick_step'],
+        self.plot_bar(data, width=opts['bin_size'], x_min=opts['bin_size'],
+                      x_max=opts['lags'] * opts['bin_size'], num=opts['lags'], x_tick_min=opts['tick_step'],
                       x_step=opts['tick_step'], y_min=0, y_max=max(data) + .05)
 
+    def plot_spectrum(self, data, opts):
+        last_index = opts['up_to_hz'] + 1
+        x = SignalProcessing.get_positive_frequencies(opts['lags'], opts['bin_size'])[:last_index]
+        y = data[:last_index]
+        self.ax.plot(x, y)
 
-class Math:
+
+class SignalProcessing:
 
     @staticmethod
-    def frequencies(Y, L):
-        P2 = abs(Y / L)
-        P1 = P2[0:int(L / 2) + 1]
-        P1[1:-1] = 2 * P1[1:-1]
-        return P1
+    def compute_one_sided_spectrum(fft_values):
+        """
+        Computes the one-sided spectrum of a signal given its FFT.
+        """
+        N = len(fft_values)
+        abs_values = np.abs(fft_values)
+        one_sided_spectrum = abs_values[:N // 2]
+
+        # multiply all frequency components by 2, except the DC component
+        one_sided_spectrum[1:] *= 2
+
+        return one_sided_spectrum
+
+    @staticmethod
+    def get_positive_frequencies(N, T):
+        """
+        Computes the positive frequencies for FFT of a dataset, given N, the length of the dataset, and T, the time
+        spacing between samples.  Returns an array of positive frequencies (Hz) of length N/2.
+        """
+        frequencies = np.fft.fftfreq(N, T)  # Compute frequencies associated with FFT components
+        positive_frequencies = frequencies[:N // 2]  # Get only positive frequencies
+        return positive_frequencies
 
 
 def init_animal(entry):
@@ -246,10 +313,12 @@ def init_animal(entry):
     tone_onsets_expanded = entry[6][0]
     animal = Animal(name, condition, tone_period_onsets=tone_period_onsets, tone_onsets_expanded=tone_onsets_expanded)
     categories = entry[3][0][0]
-    category_names = [k for k in categories.dtype.fields.keys()]
-    cat_units = dict(zip(category_names, [category[0] for category in categories]))
-    units = {cat: [[spike_time[0] for spike_time in unit[0]] for unit in cat_units[cat]] for cat in category_names}
-    {cat: [Unit(animal, cat, unit) for unit in units[cat]] for cat in units}
+    cat_names = [k for k in categories.dtype.fields.keys()]
+    cat_units = dict(zip(cat_names, [category[0] for category in categories]))
+    units = {cat: [{'spikes': [spike_time[0] for spike_time in unit[0]]} for unit in cat_units[cat]] for cat in cat_names}
+    {cat: [Unit(animal, cat, unit['spikes']) for unit in units[cat]] for cat in units}
+    for i, unit in enumerate(animal.units['good']):
+        unit.neuron_type = 'PN' if cat_units['good'][i][8][0][0] < 2 else 'IN'
     return animal
 
 
@@ -263,16 +332,17 @@ groups = [Group(name='name', animals=[animal for animal in animals if animal.con
 
 
 base_opts = {'graph_dir': '/Users/katie/likhtik/data/graphs', 'units_in_fig': 4}
-psth_opts = {**base_opts, **{'data_type': 'psth', 'pre_stim_time': 0.05, 'post_stim_time': 0.65,
-                             'bin_size_time': 0.01, 'trials': (0, 150), 'tick_step': 0.1}}
-autocorr_opts = {**base_opts, **{'data_type': 'autocorr', 'pre_stim_time': 0.0, 'post_stim_time': 30.0,
-                                 'bin_size_time': 0.01, 'trials': (0, 150, 30), 'lags': 100, 'tick_step': 0.1}}
-fft_opts = {**autocorr_opts, **{'data_type': 'fft', 'bin_size_time': 0.001}}
+psth_opts = {**base_opts, **{'data_type': 'psth', 'pre_stim': 0.05, 'post_stim': 0.65, 'bin_size': 0.01,
+                             'trials': (0, 150), 'tick_step': 0.1}}
+autocorr_opts = {**base_opts, **{'data_type': 'autocorr', 'pre_stim': 0.0, 'post_stim': 30.0, 'bin_size': 0.01,
+                                 'trials': (0, 150, 30), 'lags': 100, 'tick_step': 0.1}}
+fft_opts = {**autocorr_opts, **{'data_type': 'spectrum', 'bin_size': 0.001, 'lags': 1000, 'up_to_hz': 100}}
 
 
 for animal in animals:
     animal.plot_units(psth_opts)
     animal.plot_units(autocorr_opts)
+    animal.plot_units(fft_opts)
 
 
 
