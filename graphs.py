@@ -44,7 +44,7 @@ class Group:
     def get_average(self, data_type, opts):  # sometimes you might want to average a data type other than what's in opts
         return np.mean(np.array([animal.get_average(data_type, opts) for animal in self.animals]), axis=0)
 
-    def plot_animals(self, data_type):
+    def plot_animals(self, opts, data_type=None):
         Plotter(opts, data_type=data_type).plot_units(self)
 
 
@@ -108,37 +108,23 @@ class Unit:
         for onset in self.animal.tone_period_onsets:
             start = onset - 30 * 30000
             stop = onset - 1
-            spikes = self.find_spikes(onset - 30 * 30000, onset - 1)
-            rates = self.get_rates(spikes, opts, spike_range=(start, stop), num_bins=int(30/opts['bin_size']))
-            rate_set.append(rates)
+            rate_set.append(self.get_rates(self.find_spikes(start, stop), opts, spike_range=(start, stop),
+                                           num_bins=int(30/opts['bin_size'])))
         return np.mean(np.array(rate_set), axis=1)
-
 
     @cache_method
     def get_psth(self, opts):
         pretone_means = self.get_pretone_means(opts)
-
-        # Handle slice provided in opts['trials']
-        trials_slice = slice(*opts['trials'])
-        trials_indices = list(range(150))[trials_slice]
-
-        # Calculate rates and subtract corresponding pretone mean
-        trials = []
-        for i, trial_index in enumerate(trials_indices):
-            spikes = self.get_trials_spikes(opts)[trial_index]
-            rates = self.get_rates(spikes, opts)
-            # Determine which tone period the trial belongs to
-            tone_period_index = trial_index // 30  # since every 30 trials are in the same tone period
-            pretone_mean = pretone_means[tone_period_index]
-            # Subtract pretone mean from rate
-            adjusted_rates = rates - pretone_mean
-            trials.append(adjusted_rates)
-
-        return np.mean(np.array(trials), axis=0)
+        trial_indices = list(range(150))[slice(*opts['trials'])]  # select only the trials indicated in opts
+        rate_set = []
+        for i, trial_index in enumerate(trial_indices):
+            rates = [self.get_rates(self.get_trials_spikes(opts)[i], opts) - pretone_means[trial_index // 30]]
+            rate_set.append(rates)
+        return np.mean(np.array(rate_set), axis=0).flatten()
 
     @cache_method
     def get_autocorr(self, opts):
-        return acf(self.get_psth(opts), nlags=opts['lags'])
+        return acf(self.get_psth(opts), nlags=opts['lags'])[1:]
 
     @cache_method
     def get_fft(self, opts):
@@ -155,22 +141,23 @@ class Unit:
 
 class Plotter:
     def __init__(self, opts, data_type=None):
-        self.opts = opts
         self.dtype = data_type if data_type is not None else opts['data_type']
+        self.opts = opts
         self.labels = {'psth': ('Time (s)', 'Firing Rate (Hz'), 'autocorr': ('Lags (s)',  'Autocorrelation'),
                        'spectrum': ('Frequencies (Hz)',  'One-Sided Spectrum')}
 
     def plot_animals(self, group):
+        opts = self.opts
         n_animals = len(group.animals)
         fig = plt.figure(figsize=(10, 3 * n_animals))
 
         for i, animal in enumerate(group.animals):
-            average_data = animal.get_average(data_type, self.opts)
+            average_data = animal.get_average(data_type, opts)
             row = i // 2
             col = i % 2
             ax = fig.add_subplot(n_animals // 2 + n_animals % 2, 2, row * 2 + col + 1)
             subplotter = Subplotter(ax)
-            getattr(subplotter, f"plot_{self.dtype}")(average_data, self.opts)
+            getattr(subplotter, f"plot_{self.dtype}")(average_data, opts)
             ax.set_xlabel(self.labels[self.dtype])
             ax.set_ylabel(self.labels[self.dtype])
             ax.set_title(f"{animal.name} {self.dtype}")
@@ -185,42 +172,33 @@ class Plotter:
         plt.close(fig)
 
     def plot_units(self, animal):
+        opts = self.opts
         multi = 2 if self.dtype == 'psth' else 1
 
-        for i in range(0, len(animal.units['good']), self.opts['units_in_fig']):
-            n_subplots = min(self.opts['units_in_fig'], len(animal.units['good']) - i)
+        for i in range(0, len(animal.units['good']), opts['units_in_fig']):
+            n_subplots = min(opts['units_in_fig'], len(animal.units['good']) - i)
             fig = plt.figure(figsize=(10, 3 * multi * n_subplots))
-
-            # Create a GridSpec for n_subplots * multi rows and 1 column
             gs = GridSpec(n_subplots * multi, 1, figure=fig)
 
             for j in range(i, i + n_subplots):
                 if self.dtype == 'psth':
-                    # Add two subplots in the (2 * (j - i)) and (2 * (j - i) + 1)-th slots of the grid
                     axes = [fig.add_subplot(gs[2 * (j - i), 0]), fig.add_subplot(gs[2 * (j - i) + 1, 0])]
                 elif self.dtype in ['autocorr', 'spectrum']:
-                    # Add one subplot in the (j - i)-th slot of the grid
                     axes = [fig.add_subplot(gs[j - i, 0])]
                 self.plot_unit(animal.units['good'][j], axes)
-
-            marker1 = i + 1
-            marker2 = i + n_subplots
-
-            fname = f"{animal.name}_unit_{marker1}_to_{marker2}.png"
-            fig.suptitle(f"{animal.name} Units {marker1} to {marker2}", weight='bold',
-                         y=.95)
 
             # Add a big subplot without frame and set the x and y labels for this subplot
             big_subplot = fig.add_subplot(111, frame_on=False)
             big_subplot.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-            big_subplot.set_xlabel(self.labels[opts['data_type'][0]], labelpad=30)  # change labelpad to adjust position
-            big_subplot.set_ylabel(self.labels[opts['data_type'][1]], labelpad=30)
-
-            path = os.path.join(opts['graph_dir'], f"{opts['data_type']}_{'_'.join([str(t) for t in opts['trials']])}")
-            os.makedirs(path, exist_ok=True)
+            big_subplot.set_xlabel(self.labels[opts['data_type']][0], labelpad=30)
+            big_subplot.set_ylabel(self.labels[opts['data_type']][1], labelpad=30)
 
             plt.subplots_adjust(hspace=0.5)  # Add space between subplots
 
+            fname = f"{animal.name}_unit_{i + 1}_to_{i + n_subplots}.png"
+            fig.suptitle(f"{animal.name} Units {i + 1} to {i + n_subplots}", weight='bold', y=.95)
+            path = os.path.join(opts['graph_dir'], f"{opts['data_type']}_{'_'.join([str(t) for t in opts['trials']])}")
+            os.makedirs(path, exist_ok=True)
             fig.savefig(os.path.join(path, fname))
             plt.close(fig)
 
