@@ -1,101 +1,80 @@
-function make_psth_edits(data, dir, varargin)
+function make_psth_edits(data, data_types, trial_keys, dir)
 
     dbstop if error   
     
     C = populate_constants();
- 
-    data_to_run = parse_input(varargin{:});
-    data_types = keys(data_to_run);
-    if contains(data_types, 'fft')
-        data_types = [data_types 'frequency'];
-    end
+   
+    % Choose different subsets of trials in the experiment to graph
+    trials_map = containers.Map({'30_trials', '60_trials', '150_trials', 'first_tones'}, ...
+        {1:30, 1:60, 1:150, 1:30:150});
 
-    for i = 1:length(data_types)
-        trial_keys = data_to_run(data_types{i});
-        for j=1:length(trial_keys)
-            safeMakeDir(fullfile(dir, [data_types{i} '_' trial_keys{j}]));
-            [avg_data, data] = collect_data(data, C.trials_map(trial_keys{j}), data_types{i}, C);
-            if strcmp(data_types{i}, 'fft'); continue; end % graph the frequencies, not the xform
-            %unit_graphs(data, dir, data_types{i}, trial_keys(j), C)
-            average_graphs(avg_data, data_types{i}, dir, trial_keys(j), C); 
-            four_panel_graph(avg_data, data_types{i}, dir, trial_keys(j), C);
+    for i = 1:length(trial_keys)
+        for j=1:length(data_types)
+            safeMakeDir(fullfile(dir, [data_types{j} '_' trial_keys{i}]));
         end
-    end
-end
-
-function types = parse_input(varargin)
-    data_types = {'psth', 'autocorr', 'fft'};
-    p = inputParser;
-    cellfun(@(t) p.addParameter(t, {}, @iscellstr), data_types, 'uni', 0);
-    p.parse(varargin{:});
-    types = containers.Map(data_types, cellfun(@(x) p.Results.(x), data_types, 'uni', 0));
-    ks = keys(types);
-    for i = 1:length(ks)
-        if isempty(ks{i})
-            types.remove(ks{i});
-        end
+        
+        [average_data, data] = collect_data(data, trials_map(trial_keys{i}), data_types, C);
+        unit_graphs(data, dir, data_types, trial_keys(i), C)
+        average_graphs(average_data, data_types, dir, trial_keys(i), C); 
+        four_panel_graph(average_data, data_types, dir, trial_keys(i), C);
     end
 end
 
 function C = populate_constants()
 
     C.sps = 30000;
-
-    C.psth.bin_size_time = 0.01;
+    C.bin_size_time = 0.01;
     C.psth.pre_stim_time = 0.05;
     C.psth.post_stim_time = 0.65;
-    
-    C.autocorr.bin_size_time = 0.01;
-    C.autocorr.pre_stim_time = 0;
-    C.autocorr.post_stim_time = 30.0;
-    C.autocorr.lags = int16(1.0/C.autocorr.bin_size_time);
 
-    C.fft = C.autocorr;
-    C.fft.bin_size_time = 0.001;
-    C.fft.lags = int16(1.0/C.fft.bin_size_time);
-    C.frequency = C.fft;
+    C.autocorr.post_stim_time = 1.0;
+    C.long_autocorr.post_stim_time = 30.0;
+    C.autocorr_one_sided.post_stim_time = 30.0;
+    C.autocorr.lags = 99;
 
     C.units_in_fig = 4;
 
-    C.data_types = {'psth', 'autocorr', 'fft', 'frequency'};
-    C.field_names = containers.Map({'psth', 'autocorr', 'fft'}, ...
-        {{'psth', 'raster'}, {'autocorr'}, {'hi_res_autocorr', 'fft', 'frequencies'}});
-    
-    for i = 1:length(C.data_types)
-        data_type = C.data_types{i};
-        fields = {'pre_stim_time', 'post_stim_time', 'bin_size_time'};
+    data_types = {'psth', 'autocorr', 'long_autocorr'};
+    C.bin_size_samples = C.bin_size_time * C.sps;
+ 
+    for i = 1:length(data_types)
+        data_type = data_types{i};
+        if contains(data_types{i}, 'autocorr')
+            C.(data_type).pre_stim_time = 0;
+        end
+        fields = {'pre_stim_time', 'post_stim_time'};
         for j = 1:length(fields)
             field = fields{j};
             C.(data_type).(strrep(field, 'time', 'samples')) = C.(data_type).(field) * C.sps;
         end
-        C.(data_type).bins = 0 : C.(data_type).bin_size_samples : C.(data_type).pre_stim_samples + ...
+
+        C.(data_type).bins = 0 : C.bin_size_samples : C.(data_type).pre_stim_samples + ...
             C.(data_type).post_stim_samples;
     end
-
     C.groups = {'control', 'stressed'};
-    C.trials_map = containers.Map({'30_trials', '60_trials', '150_trials', 'first_tones'}, ...
-        {1:30, 1:60, 1:150, 1:30:150});
 end
 
-function [averages, data] = collect_data(data, trials, data_type, C)
+function [averages, data] = collect_data(data, trials, data_types, C)
 
+    % separate data into interneurons and pyramidal neurons
     data_keys = {'all_units', 'PN', 'IN'};
 
     for i_animal = 1:length(data)
         for i_unit = 1:length(data(i_animal).units.good)  
+            if strcmp(data(i_animal).animal, 'IG156') && i_unit==4 && length(trials) == 150 
+                foo = 'a';
+            end
             unit = data(i_animal).units.good(i_unit);
-            unit = calc_spike_data(unit, data(i_animal).tone_onsets_expanded(trials), ...
-                data(i_animal).tone_period_onsets, data_type, C);
+            unit = calc_spike_data(unit.spike_times, data(i_animal).tone_onsets_expanded(trials), ...
+                data(i_animal).tone_period_onsets, data_types, C);
             fields = fieldnames(unit);
             for i_field = 1:numel(fields)
                 data(i_animal).units.good(i_unit).(fields{i_field}) = unit.(fields{i_field});
             end
         end
     end
-    
-    pn_data = select_data(data, @(x) x.cluster_assignment < 2);
-    in_data = select_data(data, @(x) x.cluster_assignment >= 2);
 
+    [pn_data, in_data] = split_data(data); 
     datasets = {data, pn_data, in_data};
     averages = struct();
     for i_dataset = 1:length(datasets)
@@ -103,95 +82,75 @@ function [averages, data] = collect_data(data, trials, data_type, C)
         data_key = data_keys{i_dataset};
         for i_group = 1:length(C.groups)
             averages = select_group_and_get_averages(...
-                averages, C.groups{i_group}, data_set, data_key, data_type);       
+                averages, C.groups{i_group}, data_set, data_key, data_types);       
         end
     end
 end
 
-function averages = select_group_and_get_averages(averages, condition, data_set, data_key, data_type)
+function averages = select_group_and_get_averages(averages, condition, data_set, data_key, fields)
     index = arrayfun(@(x) strcmp(x.group, condition), data_set);
     group = data_set(index);
-    [group, group_average] = get_averages(group, data_type);
-    averages.(data_key).(condition).(data_type) = group_average;
+    for i_field = 1:length(fields)
+        [group, group_average] = get_averages(group, fields{i_field});
+        averages.(data_key).(condition).(fields{i_field}) = group_average;
+    end
     averages.(data_key).(condition).animals = group; 
 end
 
-function [group, group_average] = get_averages(group, data_type)
+function [group, group_average] = get_averages(group, field)
     for i = 1:length(group)
         if isempty(group(i).units.good); continue; end
-        good_units = group(i).units.good.(data_type);
-        average_over_trials = arrayfun(@(x) x.average_over_trials, good_units, 'uni', 0);
-        group(i).averages.(data_type) = nanmean(cell2mat(average_over_trials), 1);
-
+        group(i).averages.(field) = nanmean(cell2mat({group(i).units.good.(field)}'), 1);  
     end
 
     non_empty = arrayfun(@(x) ~isempty(x.averages), group);
-    group_average = nanmean(cell2mat(arrayfun(@(x) x.averages.(data_type), group(non_empty), 'uni', 0)'), 1);
+    group_average = nanmean(cell2mat(arrayfun(@(x) x.averages.(field), group(non_empty), 'uni', 0)'), 1);
 end
 
-function unit = calc_spike_data(unit, tone_onsets, tone_period_onsets, data_type, C)
+function unit = calc_spike_data(unit_spikes, tone_onsets, tone_period_onsets, data_types, C)
     
-    num_trials = length(tone_onsets);    
-    
-    fields = C.field_names(data_type);
-    for i = 1:length(fields)
-        unit.(fields{i}).trials_data = cell(num_trials, 1);
-    end
-    
-    for j = 1:length(unit.(data_type).trials_data)
-        tone_on = tone_onsets(j);
-        
-        [spikes, rates] = get_trial_values(unit, data_type, tone_on, C);    
-        switch data_type
-            case 'psth'
-                unit.psth.trials_data{j} = get_relative_rates(rates, tone_on, tone_period_onsets, C);
-                unit.raster = (spikes/C.sps)';
-            case 'autocorr'
-                unit.autocorr.trials_data{j} = get_one_sided_corr(rates, C.autocorr.lags);
-            case 'fft'
-                unit.hi_res_autocorr.trials_data{j} = get_one_sided_corr(rates, lags);
-                unit.fft.trials_data{j} = fft(hi_res_autocorr);
-                unit.frequencies.trials_data{j} = get_frequencies(xform, C.fft.lags);     
+    found_spikes = false;
+    num_trials = length(tone_onsets);
+    norm_factors = get_norm_factors(unit_spikes, tone_period_onsets, C);
+   
+    raster_data = cell(num_trials, 1);
+
+    for i = 1:length(data_types)
+        data_type = data_types{i};
+        trials_data = cell(num_trials, 1);
+        for j = 1:length(trials_data)
+            tone_on = tone_onsets(j);
+            [trial_spikes, spike_data, found_trial_spikes] = calculate_data(unit_spikes, data_type, ...
+                tone_on, norm_factors, tone_period_onsets, C);
+            if found_trial_spikes; found_spikes = true; end
+            trials_data{j} = spike_data;
+            if strcmp(data_type, 'psth')
+                raster_data{j} = (trial_spikes/C.sps)';
+            end
         end
+        unit.(data_type) = nanmean(cell2mat(trials_data));
     end
 
-    for i = 1:length(fields)
-        if strcmp(fields{i}, 'raster'); continue; end
-        unit.(fields{i}).trials_data = cell(num_trials, 1);
-        unit.(fields{i}).average_over_trials = nanmean(cell2mat(unit.(data_type).trials_data));
+    unit.raster = raster_data;
+    unit.found_spikes = found_spikes;
+end
+
+function [trial_spikes, spike_data, found_spikes] = calculate_data(unit_spikes, data_type, tone_on, ...
+    norm_factors, tone_period_onsets, C)
+    trial_spikes = find_trial_spikes(unit_spikes, tone_on - C.(data_type).pre_stim_samples, ...
+        C.(data_type).pre_stim_samples + C.(data_type).post_stim_samples);
+    found_spikes = ~isempty(trial_spikes);
+    rates = histcounts(trial_spikes,  C.(data_type).bins) / C.bin_size_time; % spike counts per second
+    if strcmp(data_type, 'psth')
+        % Determine the tone period for the current trial
+        period_index = find(tone_period_onsets <= tone_on, 1, 'last');
+        mean_rate = norm_factors{period_index}(1);
+        std_dev = norm_factors{period_index}(2);
+        spike_data = rates - mean_rate;
+    elseif contains(data_type, 'autocorr')
+        spike_data = xcorr(rates, 99, 'coeff');
+        spike_data = spike_data(end-C.autocorr.lags+1:end);
     end
-
-    unit.found_spikes = any(cellfun(@(x) ~isempty(x), unit.(data_type).trials_data));
-end
-
-function one_sided_corr = get_one_sided_corr(rates, lags)
-    corr = xcorr(rates, lags, 'coeff');
-    one_sided_corr = corr(end-lags+1:end);
-end
-
-function [spikes, rates] = get_trial_values(unit, data_type, tone_on, C)
-    spikes = find_trial_spikes(unit.spike_times, tone_on - C.(data_type).pre_stim_samples, ...
-    C.(data_type).pre_stim_samples + C.(data_type).post_stim_samples);
-    rates = get_rates(spikes, data_type, C);
-end
-
-function rates = get_rates(trial_spikes, data_type, C)
-    rates = histcounts(trial_spikes,  C.(data_type).bins) / C.(data_type).bin_size_time; % spike counts per second
-end
-
-function relative_rates = get_relative_rates(rates, tone_on, tone_period_onsets, C)
-    period = find(tone_period_onsets <= tone_on, 1, 'last');
-    pre_tone_period_start = tone_period_onsets(period_index) - 30*C.sps;
-    pre_tone_bins = pre_tone_period_start:C.psth.bin_size_samples:(tone_period_onsets(period) - 1);
-    pre_tone_rates = get_rates(spikes, pre_tone_bins, C); 
-    mean_rate = mean(pre_tone_rates);
-    relative_rates = (rates - mean_rate);
-end
-
-function P1 = get_frequencies(Y, L)
-    P2 = abs(Y/double(L));
-    P1 = P2(1:L/2+1);
-    P1(2:end-1) = 2*P1(2:end-1);
 end
 
 function trial_spikes = find_trial_spikes(spikes, start, length_in_samples)
@@ -202,10 +161,32 @@ function trial_spikes = find_trial_spikes(spikes, start, length_in_samples)
     end
 end
 
-function unit_graphs(data, graph_dir, data_type, trials_key, C)
+function norm_factors = get_norm_factors(spikes, tone_period_onsets, C)
+    num_periods = length(tone_period_onsets);
+    norm_factors = cell(num_periods, 1);
+    for i = 1:num_periods
+        pre_tone_period_start = tone_period_onsets(i) - 30*C.sps;
+        pre_tone_bins = pre_tone_period_start:C.bin_size_samples:(tone_period_onsets(i) - 1);
+        pre_tone_rates = get_rates(spikes, pre_tone_bins, C.bin_size_time); 
+        norm_factors{i} = [mean(pre_tone_rates), std(pre_tone_rates)]; 
+    end
+    
+    % if no spikes in a period make std. dev. the mean of the other periods' std. dev.
+    for i = 1:num_periods
+        if norm_factors{i}(2) == 0
+            non_zero_indices = cellfun(@(x) x(2) ~= 0, norm_factors); 
+            non_zero_values = cell2mat(norm_factors(non_zero_indices));
+            norm_factors{i}(2) = mean(non_zero_values(2));  
+        end
+    end
+end
+
+function unit_graphs(data, graph_dir, data_types, trials_key, C)
     for i_animal = 1:length(data)
-        animal = data(i_animal);    
-        create_units_figure(graph_dir, data_type, animal, trials_key, C);
+        animal = data(i_animal);
+        for i_datatype = 1:length(data_types)
+            create_units_figure(graph_dir, data_types{i_datatype}, animal, trials_key, C);
+        end
     end
 end
 
@@ -222,7 +203,7 @@ end
 function fig = plot_unit(fig, graph_dir, animal, i_unit, data_type, trials_key, C)
     unit = animal.units.good(i_unit);
        
-    plot_args = {data_type, unit.(data_type).average_over_trials, C};
+    plot_args = {data_type, unit.(data_type), C};
 
     if strcmp(data_type, 'psth')
         % first plot the raster
@@ -254,20 +235,22 @@ function [marker1, marker2] = markers(animal, i_unit, C)
         length(animal.units.good));
 end
 
-function average_graphs(averages, data_type, graph_dir, trials_key, C)
+function average_graphs(averages, data_types, graph_dir, trials_key, C)
     datasets = {'all_units', 'PN', 'IN'};
+
     for i_dataset = 1:length(datasets)
         for i_group = 1:length(C.groups)
             create_average_figures(averages.(datasets{i_dataset}), C.groups{i_group}, ...
-                data_type, graph_dir, [trials_key, {datasets{i_dataset}, C.groups{i_group}}], C) 
+                data_types, graph_dir, [trials_key, {datasets{i_dataset}, C.groups{i_group}}], C) 
         end
     end    
 end
 
 function create_average_figures(data, condition, data_types, graph_dir, name_tags, C)
+    
     for i_type = 1:length(data_types)
         extra_args = {};
-        if contains(data_type, 'autocorr')
+        if contains(data_types{i_type}, 'autocorr')
             extra_args = {'y_dim', [0, .2]};
         end
         average_figure(@plot_animal_averages, 'animal_averages', data_types{i_type}, condition, ...
@@ -353,6 +336,10 @@ function [title, fname] = title_and_fname(base, name_tags)
     fname = [fname '.fig'];
 end
 
+function rates = get_rates(spikes, bins, time)
+    rates = histcounts(spikes, bins) / time; % spike counts per second
+end
+
 function plot_data(data_type, y, C, varargin)
     p = inputParser;
     p.addParamValue('subplot_args', [], @isnumeric);
@@ -387,7 +374,7 @@ function plot_data(data_type, y, C, varargin)
         x = C.psth.bins(1:end-1)/C.sps - C.psth.pre_stim_time;
         bar(x, y, 'k');
         hold on;
-        ylabel('Relative Spike Rate (Hz)');
+        ylabel('Normalized Spike Rate');
         xlabel('Time (s)');
         xlim([-C.psth.pre_stim_time max(x)]);
         if ~isempty(y_dim)
@@ -398,7 +385,7 @@ function plot_data(data_type, y, C, varargin)
             'FaceAlpha', 0.2, 'EdgeColor', 'none');
         hold off;
     elseif contains(data_type, 'autocorr')
-         x = 1:C.autocorr.lags*C.bin_size_time;
+         x = C.bin_size_time:C.bin_size_time:C.autocorr.lags*C.bin_size_time;
          bar(x, y, 'k');
          xlabel('Lag (s)');
          ylabel('Autocorrelation');
@@ -445,11 +432,30 @@ function save_and_close_fig(fig, graph_dir, name, data_type, trial_num, varargin
     close(fig);
 end
 
-function selected_data = select_data(data, criterion_func)
-    selected_data = data;
+function [data_below_cutoff, data_above_cutoff] = split_data(data)
+    % Initialize the output structures
+    data_below_cutoff = data;
+    data_above_cutoff = data;
+    
+    % Iterate over each animal in the data
     for i = 1:length(data)
-        keep_index = arrayfun(criterion_func, data(i).units.good, 'uni', 1);
-        selected_data(i).units.good = data(i).units.good(keep_index);
+        % Initialize new "good" structures for this animal
+        good_below_cutoff = [];
+        good_above_cutoff = [];
+        
+        % Iterate over each "good" unit in this animal
+        for j = 1:length(data(i).units.good)
+            % Check if the FWHM_time is below or above the cutoff
+            if data(i).units.good(j).cluster_assignment < 2
+                good_below_cutoff = [good_below_cutoff, data(i).units.good(j)];
+            else
+                good_above_cutoff = [good_above_cutoff, data(i).units.good(j)];
+            end
+        end
+        
+        % Update the "good" units for this animal in the output structures
+        data_below_cutoff(i).units.good = good_below_cutoff;
+        data_above_cutoff(i).units.good = good_above_cutoff;
     end
 end
 

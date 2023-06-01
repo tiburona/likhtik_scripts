@@ -16,7 +16,7 @@ function make_psth_edits(data, dir, varargin)
             safeMakeDir(fullfile(dir, [data_types{i} '_' trial_keys{j}]));
             [avg_data, data] = collect_data(data, C.trials_map(trial_keys{j}), data_types{i}, C);
             if strcmp(data_types{i}, 'fft'); continue; end % graph the frequencies, not the xform
-            %unit_graphs(data, dir, data_types{i}, trial_keys(j), C)
+            unit_graphs(data, dir, data_types{i}, trial_keys(j), C)
             average_graphs(avg_data, data_types{i}, dir, trial_keys(j), C); 
             four_panel_graph(avg_data, data_types{i}, dir, trial_keys(j), C);
         end
@@ -137,6 +137,7 @@ function unit = calc_spike_data(unit, tone_onsets, tone_period_onsets, data_type
     for i = 1:length(fields)
         unit.(fields{i}).trials_data = cell(num_trials, 1);
     end
+    unit.raster = cell(num_trials, 1);
     
     for j = 1:length(unit.(data_type).trials_data)
         tone_on = tone_onsets(j);
@@ -144,8 +145,8 @@ function unit = calc_spike_data(unit, tone_onsets, tone_period_onsets, data_type
         [spikes, rates] = get_trial_values(unit, data_type, tone_on, C);    
         switch data_type
             case 'psth'
-                unit.psth.trials_data{j} = get_relative_rates(rates, tone_on, tone_period_onsets, C);
-                unit.raster = (spikes/C.sps)';
+                unit.psth.trials_data{j} = get_relative_rates(unit, rates, tone_on, tone_period_onsets, C);
+                unit.raster{j} = (spikes/C.sps)';
             case 'autocorr'
                 unit.autocorr.trials_data{j} = get_one_sided_corr(rates, C.autocorr.lags);
             case 'fft'
@@ -157,7 +158,6 @@ function unit = calc_spike_data(unit, tone_onsets, tone_period_onsets, data_type
 
     for i = 1:length(fields)
         if strcmp(fields{i}, 'raster'); continue; end
-        unit.(fields{i}).trials_data = cell(num_trials, 1);
         unit.(fields{i}).average_over_trials = nanmean(cell2mat(unit.(data_type).trials_data));
     end
 
@@ -179,11 +179,12 @@ function rates = get_rates(trial_spikes, data_type, C)
     rates = histcounts(trial_spikes,  C.(data_type).bins) / C.(data_type).bin_size_time; % spike counts per second
 end
 
-function relative_rates = get_relative_rates(rates, tone_on, tone_period_onsets, C)
+function relative_rates = get_relative_rates(unit, rates, tone_on, tone_period_onsets, C)
     period = find(tone_period_onsets <= tone_on, 1, 'last');
-    pre_tone_period_start = tone_period_onsets(period_index) - 30*C.sps;
+    pre_tone_period_start = tone_period_onsets(period) - 30*C.sps;
     pre_tone_bins = pre_tone_period_start:C.psth.bin_size_samples:(tone_period_onsets(period) - 1);
-    pre_tone_rates = get_rates(spikes, pre_tone_bins, C); 
+    spikes = find_trial_spikes(unit.spike_times, pre_tone_period_start, 30*C.sps);
+    pre_tone_rates = histcounts(spikes, pre_tone_bins)/C.psth.bin_size_time;
     mean_rate = mean(pre_tone_rates);
     relative_rates = (rates - mean_rate);
 end
@@ -264,21 +265,20 @@ function average_graphs(averages, data_type, graph_dir, trials_key, C)
     end    
 end
 
-function create_average_figures(data, condition, data_types, graph_dir, name_tags, C)
-    for i_type = 1:length(data_types)
-        extra_args = {};
-        if contains(data_type, 'autocorr')
-            extra_args = {'y_dim', [0, .2]};
-        end
-        average_figure(@plot_animal_averages, 'animal_averages', data_types{i_type}, condition, ...
-            data, graph_dir, name_tags, C, extra_args);
-        average_figure(@plot_group_average, 'group_averages', data_types{i_type}, condition, ...
-            data,graph_dir, name_tags, C, extra_args);
+function create_average_figures(data, condition, data_type, graph_dir, name_tags, C)
+    extra_args = {};
+    
+    if contains(data_type, 'autocorr')
+        extra_args = {'y_dim', [0, .2]};
     end
+    average_figure(@plot_animal_averages, 'animal_averages', data_type, condition, ...
+        data, graph_dir, name_tags, C, extra_args);
+    average_figure(@plot_group_average, 'group_averages', data_type, condition, ...
+        data,graph_dir, name_tags, C, extra_args);
 end
-
+    
 function average_figure(average_func, name, data_type, condition, data, graph_dir, name_tags, C, extra_args)
-    average_fig = initialize_figure('on');
+    average_fig = initialize_figure('off');
     average_func(data, condition, data_type, C, extra_args);
     [title, fname] = title_and_fname(name, horzcat(name_tags, data_type));
     save_and_close_fig(average_fig, graph_dir, fname, data_type, name_tags{1}, 'figure_title', title);
@@ -301,30 +301,28 @@ function plot_group_average(average_data, condition, data_type, C, extra_args)
     plot_data(data_type, average_data.(condition).(data_type), C, extra_args{:});
 end
 
-function four_panel_graph(averages, data_types, dir, trial_num, C)
+function four_panel_graph(averages, data_type, dir, trial_num, C)
     datasets = {'IN', 'PN'};
 
-    for i=1:length(data_types)
-        [y_min, y_max] = find_y_boundaries(averages, datasets, C.groups, data_types{i});
-        data_type = data_types{i};
-        four_panel_fig = initialize_figure('on');
+    [y_min, y_max] = find_y_boundaries(averages, datasets, C.groups, data_type);
+    four_panel_fig = initialize_figure('off');
 
-        for i_dataset = 1:length(datasets)
-            data_set = datasets{i_dataset};
-            for i_group = 1:length(C.groups)
-                group = C.groups{i_group};
-                [title, ~] = title_and_fname('', {data_set, group});
-                args = {data_type, averages.(data_set).(group).(data_type), C, 'title_text', title,...
-                    'subplot', [2, 2, (i_dataset-1)*2 + i_group], 'fig_handle', four_panel_fig};
-                y_dim = [y_min, y_max];  
-                args = [args, {'y_dim', y_dim}];
-                plot_data(args{:}); 
-            end
+    for i_dataset = 1:length(datasets)
+        data_set = datasets{i_dataset};
+        for i_group = 1:length(C.groups)
+            group = C.groups{i_group};
+            [title, ~] = title_and_fname('', {data_set, group});
+            args = {data_type, averages.(data_set).(group).(data_type), C, 'title_text', title,...
+                'subplot', [2, 2, (i_dataset-1)*2 + i_group], 'fig_handle', four_panel_fig};
+            y_dim = [y_min, y_max];  
+            args = [args, {'y_dim', y_dim}];
+            plot_data(args{:}); 
         end
-        [title, fname] = title_and_fname('four_panel', [data_type trial_num]);
-        save_and_close_fig(four_panel_fig, dir, fname, data_type, trial_num{1}, ...
-            'figure_title', title);
-    end   
+    end
+    [title, fname] = title_and_fname('four_panel', [data_type trial_num]);
+    save_and_close_fig(four_panel_fig, dir, fname, data_type, trial_num{1}, ...
+        'figure_title', title);
+      
 end
 
 function [y_min, y_max] = find_y_boundaries(averages, datasets, groups, data_type)
@@ -398,7 +396,7 @@ function plot_data(data_type, y, C, varargin)
             'FaceAlpha', 0.2, 'EdgeColor', 'none');
         hold off;
     elseif contains(data_type, 'autocorr')
-         x = 1:C.autocorr.lags*C.bin_size_time;
+         x = double((1:C.autocorr.lags))*C.autocorr.bin_size_time;
          bar(x, y, 'k');
          xlabel('Lag (s)');
          ylabel('Autocorrelation');
