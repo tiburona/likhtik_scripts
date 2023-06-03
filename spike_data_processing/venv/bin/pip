@@ -1,4 +1,4 @@
-#!/Users/katie/likhtik/likhtik_scripts/spike_data_processing/venv/bin/python3.10
+#!/Users/katie/likhtik/likhtik_scripts/spike_data_processing/venv/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
