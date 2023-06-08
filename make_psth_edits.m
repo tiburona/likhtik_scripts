@@ -61,7 +61,7 @@ function [averages, data] = collect_data(data, trials, data_types, C)
 
     for i_animal = 1:length(data)
         for i_unit = 1:length(data(i_animal).units.good)  
-            if strcmp(data(i_animal).animal, 'IG156') && i_unit==4 && length(trials) == 150 
+            if strcmp(data(i_animal).animal, 'IG160') 
                 foo = 'a';
             end
             unit = data(i_animal).units.good(i_unit);
@@ -148,6 +148,7 @@ function [trial_spikes, spike_data, found_spikes] = calculate_data(unit_spikes, 
         std_dev = norm_factors{period_index}(2);
         spike_data = rates - mean_rate;
     elseif contains(data_type, 'autocorr')
+        rates = rates - mean(rates);
         spike_data = xcorr(rates, 99, 'coeff');
         spike_data = spike_data(end-C.autocorr.lags+1:end);
     end
