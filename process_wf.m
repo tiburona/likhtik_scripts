@@ -1,23 +1,23 @@
 dbstop if error
-addpath(genpath('/Users/katie/likhtik'));
-load('/Users/katie/likhtik/data/new_data.mat');
-single_cell_data = process_waveforms(data, ...
+%addpath(genpath('/Users/katie/likhtik'));
+%load('/Users/katie/likhtik/data/new_data.mat');
+single_cell_data = process_waveforms(single_cell_data, ...
     '/Users/katie/likhtik/data/graphs/waveforms');
 single_cell_data = fr_fwhm_kmeans(single_cell_data);
 
 scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds)', ...
     'Firing Rate (Hz)', 'Scatterplot of Good Units', ...
     'FWHM_and_FR_Scatterplot_with_Adjusted_Histograms_Post_Spike_Max.fig');
-scatter_plot(single_cell_data, 'trough_to_peak_microseconds', 'firing_rate', 'Trough to Peak Distance (microseconds)', ...
-    'Firing Rate (Hz)', 'Scatterplot of Good Units', ...
-    'Trough_to_Peak_and_FR_Scatterplot_with_Adjusted_Histograms_Post_Spike_Max.fig');
-scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds) < 1000', ...
-    'Firing Rate (Hz)', 'Scatterplot of Good Units', ...
-    'FWHM_and_FR_Scatterplot_with_Adjusted_Histograms_FWHM_less_than_1000.fig', ...
-    '<1000');
+%scatter_plot(single_cell_data, 'trough_to_peak_microseconds', 'firing_rate', 'Trough to Peak Distance (microseconds)', ...
+%    'Firing Rate (Hz)', 'Scatterplot of Good Units', ...
+%    'Trough_to_Peak_and_FR_Scatterplot_with_Adjusted_Histograms_Post_Spike_Max.fig');
+%scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds) < 1000', ...
+%    'Firing Rate (Hz)', 'Scatterplot of Good Units', ...
+%    'FWHM_and_FR_Scatterplot_with_Adjusted_Histograms_FWHM_less_than_1000.fig', ...
+%    '<1000');
 
 
-save('single_cell_data.mat', 'single_cell_data');
+%save('single_cell_data.mat', 'single_cell_data');
 
 
 function data = process_waveforms(data, graph_path)
@@ -208,9 +208,14 @@ function data = fr_fwhm_kmeans(data)
     end
     
     % Perform k-means clustering on FWHM and firing rate data
-    k = 3;
-    X = [all_FWHM', all_firing_rates'];
-    [idx, ~] = kmeans(X, k);
+    k = 2;
+    X = [normalize(all_FWHM)', normalize(all_firing_rates)'];
+
+    % Use K-means++ to initialize the centroids
+    centroids = kmeans_plusplus(X, k);
+
+    % Perform K-means clustering with the initial centroids
+    [idx, ~] = kmeans(X, k, 'Start', centroids);
     
     % Store the cluster assignments in the data structure
     count = 1;
@@ -300,5 +305,24 @@ function scatter_plot(data, x_attr, y_attr, x_label, y_label, gtitle, gfname, co
 
 end
 
+function centroids = kmeans_plusplus(data, k)
+    % Initialize the centroids list with a randomly chosen point from the data
+    centroids = data(randi([1 size(data, 1)]), :);
+
+    for i = 2:k
+        % Compute the distance between each point and the nearest centroid
+        D = min(pdist2(data, centroids), [], 2);
+
+        % Compute the probabilities for each point
+        P = D.^2 / sum(D.^2);
+
+        % Choose the next centroid
+        centroids(i, :) = data(randsample(size(data, 1), 1, true, P), :);
+    end
+end
+
+function normalized_x = normalize(x)
+    normalized_x = (x - mean(x))/std(x);
+end
 
 
