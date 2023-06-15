@@ -46,15 +46,15 @@ function process_units_or_stereotrodes(fid, data, animal_idx, unit_type, method)
         category = 'None';
         if strcmp(method, 'by_unit')
             if data(animal_idx).units.good(element_idx).cluster_assignment > 1
-                category = 'IN';
-            else
                 category = 'PN';
+            else
+                category = 'IN';
             end
         end
             
 
         % Calculate spike rates for the element (unit or stereotrode)
-        spike_rates = calculate_spike_rates(data, animal_idx, elements(element_idx).spike_times);
+        spike_rates = calculate_spike_rates(data, animal_idx, int64(elements(element_idx).spike_times));
 
         % Write a row to the CSV file with the spike rate for this element in different periods
         write_spike_rates_to_csv(fid, data, animal_idx, unit_type, element_idx, category, spike_rates, method);
@@ -69,29 +69,30 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
     % Initialize event counts for different conditions
     event_count_pre_tone = 0;
     event_count_inter_tone = 0;
-    event_count_post_beep_0_300 = 0;
-    event_count_post_beep_301_600 = 0;
+    event_count_during_beep = 0;
+    event_count_early_post_beep = 0;
+    event_count_mid_post_beep = 0;
     event_count_late_post_beep = 0;
 
     % Get ToneOn_ts_expanded
-    tone_onsets_expanded = data(animal_idx).tone_onsets_expanded;
+    tone_onsets_expanded = int64(data(animal_idx).tone_onsets_expanded);
 
     % Get the start of the recording (60 seconds before the first ToneOn)
-    recording_start = data(animal_idx).tone_onsets(1) - SECONDS_BEFORE_FIRST_TONE * CYCLES_PER_SECOND;
+    recording_start = data(animal_idx).tone_period_onsets(1) - SECONDS_BEFORE_FIRST_TONE * CYCLES_PER_SECOND;
 
     % Check the condition for each timestamp
     for i = 1:length(timestamps)
         timestamp = timestamps(i);
         % Pre-tone condition
-        if timestamp >= recording_start && timestamp < data(animal_idx).tone_onsets(1)
+        if timestamp >= recording_start && timestamp < data(animal_idx).tone_period_onsets(1)
             event_count_pre_tone = event_count_pre_tone + 1;
             continue;
         end
         
         % Inter-tone condition
         inter_tone = false;
-        for j = 1:length(data(animal_idx).tone_offsets) - 1
-            if data(animal_idx).tone_offsets(j) < timestamp && data(animal_idx).tone_onsets(j + 1) > timestamp
+        for j = 1:length(data(animal_idx).tone_period_offsets) - 1
+            if data(animal_idx).tone_period_offsets(j) < timestamp && data(animal_idx).tone_period_onsets(j + 1) > timestamp
                 event_count_inter_tone = event_count_inter_tone + 1;
                 inter_tone = true;
                 break;
@@ -101,16 +102,17 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
             continue;
         end
      
-        % Post-beep (0-600 ms) and Late post-beep (>600 ms) conditions
         for j = 1:length(tone_onsets_expanded)
             time_diff = timestamp - tone_onsets_expanded(j);
-            if time_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
-                event_count_post_beep_0_300 = event_count_post_beep_0_300 + 1;
+            if time_diff >= 0 && time_diff < 50 * CYCLES_PER_SECOND / 1000
+                event_count_during_beep = event_count_during_beep + 1;
+            elseif time_diff >= 50 * CYCLES_PER_SECOND / 1000 && time_diff < 300 * CYCLES_PER_SECOND / 1000
+                event_count_early_post_beep = event_count_early_post_beep + 1;
                 break;
-            elseif time_diff >= 301 && time_diff <= 600 * CYCLES_PER_SECOND / 1000
-                event_count_post_beep_301_600 = event_count_post_beep_301_600 + 1;
+            elseif time_diff >= 300 * CYCLES_PER_SECOND / 1000 && time_diff < 600 * CYCLES_PER_SECOND / 1000
+                event_count_mid_post_beep = event_count_mid_post_beep + 1;
                 break;
-            elseif time_diff > 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
+            elseif time_diff >= 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
                 event_count_late_post_beep = event_count_late_post_beep + 1;
                 break;
             end
@@ -118,17 +120,19 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
     end
     
     % Initialize the elapsed time for different conditions
-    elapsed_time_pre_tone = (data(animal_idx).tone_onsets(1) - recording_start) / CYCLES_PER_SECOND;
-    elapsed_time_inter_tone = sum(data(animal_idx).tone_onsets(2:end) - data(animal_idx).tone_offsets(1:end-1)') / CYCLES_PER_SECOND;
-    elapsed_time_post_beep_0_300 = (301 / 1000) * length(tone_onsets_expanded);
-    elapsed_time_post_beep_301_600 = (300 / 1000) * length(tone_onsets_expanded);
-    elapsed_time_late_post_beep = ((1000 - 600) / 1000) * length(tone_onsets_expanded);
+    elapsed_time_pre_tone = (data(animal_idx).tone_period_onsets(1) - recording_start) / CYCLES_PER_SECOND;
+    elapsed_time_inter_tone = sum(data(animal_idx).tone_period_onsets(2:end) - data(animal_idx).tone_period_offsets(1:end-1)') / CYCLES_PER_SECOND;
+    elapsed_time_during_beep = (50 / 1000) * length(tone_onsets_expanded);
+    elapsed_time_early_post_beep = (250 / 1000) * length(tone_onsets_expanded);
+    elapsed_time_mid_post_beep = (300 / 1000) * length(tone_onsets_expanded);
+    elapsed_time_late_post_beep = (400 / 1000) * length(tone_onsets_expanded);
     
     % Calculate spike rates for different conditions
     spike_rates.pre_tone = event_count_pre_tone / elapsed_time_pre_tone;
     spike_rates.inter_tone = event_count_inter_tone / elapsed_time_inter_tone;
-    spike_rates.post_beep_0_300 = event_count_post_beep_0_300 / elapsed_time_post_beep_0_300;
-    spike_rates.post_beep_301_600 = event_count_post_beep_301_600 / elapsed_time_post_beep_301_600;
+    spike_rates.during_beep = event_count_during_beep / elapsed_time_during_beep;
+    spike_rates.early_post_beep = event_count_early_post_beep / elapsed_time_early_post_beep;
+    spike_rates.mid_post_beep = event_count_mid_post_beep / elapsed_time_mid_post_beep;
     spike_rates.late_post_beep = event_count_late_post_beep / elapsed_time_late_post_beep;
 
     end

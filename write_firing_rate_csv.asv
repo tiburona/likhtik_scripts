@@ -10,7 +10,7 @@ function write_csv(data, output_file, method)
 
     % Write the header to the CSV file
     if strcmp(method, 'by_unit')
-        fprintf(fid, 'animal,condition,unit_type,unit_num,period,spike_rate\n');
+        fprintf(fid, 'animal,condition,unit_type,unit_num,category,period,spike_rate\n');
     elseif strcmp(method, 'by_stereotrode')
         fprintf(fid, 'animal,condition,unit_type,stereotrode,period,spike_rate\n');
     end
@@ -20,7 +20,8 @@ function write_csv(data, output_file, method)
 
         % Process good and MUA units
         process_units_or_stereotrodes(fid, data, animal_idx, 'good', method);
-        if isfield(data(animal_idx).units, 'MUA') % one animal doesn't have any MUA; this line avoids an unrecognized field name error
+        
+        if strcmp(method, 'by_stereotrode') && isfield(data(animal_idx).units, 'MUA') % one animal doesn't have any MUA; this line avoids an unrecognized field name error
             process_units_or_stereotrodes(fid, data, animal_idx, 'MUA', method);
         end
     end
@@ -33,7 +34,6 @@ function process_units_or_stereotrodes(fid, data, animal_idx, unit_type, method)
     if strcmp(method, 'by_unit')
         elements = data(animal_idx).units.(unit_type);
     elseif strcmp(method, 'by_stereotrode')
-
         elements = group_units_by_stereotrode(data(animal_idx).units.(unit_type));
     end
     
@@ -42,6 +42,17 @@ function process_units_or_stereotrodes(fid, data, animal_idx, unit_type, method)
         if isempty(elements(element_idx).spike_times) % Some stereotrodes would not have spikes
             continue
         end
+        
+        category = 'None';
+        if strcmp(method, 'by_unit')
+            if data(animal_idx).units.good(element_idx).cluster_assignment > 1
+                category = 'PN';
+            else
+                category = 'IN';
+            end
+        end
+            
+
         % Calculate spike rates for the element (unit or stereotrode)
         spike_rates = calculate_spike_rates(data, animal_idx, elements(element_idx).spike_times);
 
@@ -58,8 +69,9 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
     % Initialize event counts for different conditions
     event_count_pre_tone = 0;
     event_count_inter_tone = 0;
-    event_count_post_beep_0_300 = 0;
-    event_count_post_beep_301_600 = 0;
+    event_count_during_beep = 0;
+    event_count_early_post_beep = 0;
+    event_count_mid_post_beep = 0;
     event_count_late_post_beep = 0;
 
     % Get ToneOn_ts_expanded
@@ -90,16 +102,17 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
             continue;
         end
      
-        % Post-beep (0-600 ms) and Late post-beep (>600 ms) conditions
         for j = 1:length(tone_onsets_expanded)
             time_diff = timestamp - tone_onsets_expanded(j);
-            if time_diff >= 0 && time_diff <= 300 * CYCLES_PER_SECOND / 1000
-                event_count_post_beep_0_300 = event_count_post_beep_0_300 + 1;
+            if time_diff >= 0 && time_diff < 50 * CYCLES_PER_SECOND / 1000
+                event_count_during_beep = event_count_during_beep + 1;
+            elseif time_diff >= 50 * CYCLES_PER_SECOND / 1000 && time_diff < 300 * CYCLES_PER_SECOND / 1000
+                event_count_early_post_beep = event_count_early_post_beep + 1;
                 break;
-            elseif time_diff >= 301 && time_diff <= 600 * CYCLES_PER_SECOND / 1000
-                event_count_post_beep_301_600 = event_count_post_beep_301_600 + 1;
+            elseif time_diff >= 300 * CYCLES_PER_SECOND / 1000 && time_diff < 600 * CYCLES_PER_SECOND / 1000
+                event_count_mid_post_beep = event_count_mid_post_beep + 1;
                 break;
-            elseif time_diff > 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
+            elseif time_diff >= 600 * CYCLES_PER_SECOND / 1000 && time_diff < 1000 * CYCLES_PER_SECOND / 1000
                 event_count_late_post_beep = event_count_late_post_beep + 1;
                 break;
             end
@@ -109,15 +122,17 @@ function spike_rates = calculate_spike_rates(data, animal_idx, timestamps)
     % Initialize the elapsed time for different conditions
     elapsed_time_pre_tone = (data(animal_idx).tone_onsets(1) - recording_start) / CYCLES_PER_SECOND;
     elapsed_time_inter_tone = sum(data(animal_idx).tone_onsets(2:end) - data(animal_idx).tone_offsets(1:end-1)') / CYCLES_PER_SECOND;
-    elapsed_time_post_beep_0_300 = (301 / 1000) * length(tone_onsets_expanded);
+    elapsed_time_during_beep = (50 / 1000) * length(tone_onsets_expanded);
+    elapsed_time_post_beep_51_300 = (250 / 1000) * length(tone_onsets_expanded);
     elapsed_time_post_beep_301_600 = (300 / 1000) * length(tone_onsets_expanded);
-    elapsed_time_late_post_beep = ((1000 - 600) / 1000) * length(tone_onsets_expanded);
+    elapsed_time_late_post_beep = (400 / 1000) * length(tone_onsets_expanded);
     
     % Calculate spike rates for different conditions
     spike_rates.pre_tone = event_count_pre_tone / elapsed_time_pre_tone;
     spike_rates.inter_tone = event_count_inter_tone / elapsed_time_inter_tone;
-    spike_rates.post_beep_0_300 = event_count_post_beep_0_300 / elapsed_time_post_beep_0_300;
-    spike_rates.post_beep_301_600 = event_count_post_beep_301_600 / elapsed_time_post_beep_301_600;
+    spike_rates.during_beep = event_count_during_beep / elapsed_time_during_beep;
+    spike_rates.post_beep_51_300 = event_count_early_post_beep / elapsed_time_post_beep_51_300;
+    spike_rates.post_beep_301_600 = event_count_mid_post_beep / elapsed_time_post_beep_301_600;
     spike_rates.late_post_beep = event_count_late_post_beep / elapsed_time_late_post_beep;
 
     end
