@@ -1,8 +1,8 @@
 dbstop if error
 %addpath(genpath('/Users/katie/likhtik'));
 %load('/Users/katie/likhtik/data/new_data.mat');
-single_cell_data = process_waveforms(single_cell_data, ...
-    '/Users/katie/likhtik/data/graphs/waveforms');
+% single_cell_data = process_waveforms(single_cell_data, ...
+%    '/Users/katie/likhtik/data/graphs/waveforms');
 single_cell_data = fr_fwhm_kmeans(single_cell_data);
 
 scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds)', ...
@@ -105,7 +105,7 @@ for i = 1:length(data)
         
         % Select later spikes for global firing rate calculation to try to
         % reduce early noise
-        spike_times_for_fr = spike_times(spike_times > 15000);
+        spike_times_for_fr = spike_times(spike_times > 30*30000);
         fr = (length(spike_times_for_fr)/(double(spike_times_for_fr(end) - spike_times_for_fr(1))))*sampling_rate;
         animal.units.good(j).firing_rate = fr; 
 
@@ -161,7 +161,7 @@ function plot_waveforms(animal, unit_idx, waveforms, electrodes, pth, varargin)
         ext = '.fig';
     else
         name_str = 'Mean Waveform';
-        ext = '.png';
+        ext = '.fig';
     end
 
     % Set the overall figure title

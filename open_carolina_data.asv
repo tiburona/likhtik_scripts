@@ -1,0 +1,16 @@
+addpath(genpath('/Users/katie/likhtik'))
+
+CH084_nev.NEV =  openNEV('read', fullfile('/Users/katie/Downloads/CH084', 'EXTREC002.nev'));
+
+CH087_nev.NEV = openNEV('read', fullfile('/Users/katie/Downloads/CH087', 'EXTREC001.nev'));
+
+CH084.Data = openNSx('read', fullfile('/Users/katie/Downloads/CH084', 'EXTREC002.ns6'), 'uv');
+CH087.Data = openNSx('read', fullfile('/Users/katie/Downloads/CH087', 'EXTREC001.ns6'), 'uv');
+
+CH084_2_nev.NEV = openNEV('read', fullfile('/Users/katie/Downloads/CH084_2', 'EXT001.nev'));
+CH084_2.Data = openNSx('read', fullfile('/Users/katie/Downloads/CH084_2', 'EXT001.ns6'), 'uv');
+
+CH087_2_nev.NEV = openNEV('read', fullfile('/Users/katie/Downloads/CH087_2', 'EXT003.nev'));
+CH087_2.Data = openNSx('read', fullfile('/Users/katie/Downloads/CH087_2', 'EXT003.ns6'), 'uv');
+
+CH085
