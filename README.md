@@ -1,7 +1,7 @@
 
 ## Running Kilosort and post processing the data
 
-The directory kilosort_and_phy_pre_and_post contains scripts to run Kilosort and post process data after manual curation in phy. `denoise_and_run_ks` calls a function to remove noise (`removeLineNoise_SpectrumEstimation.m ` downloaded from [here](https://www.mathworks.com/matlabcentral/fileexchange/54228-remove-line-noise) and `main_kilosort2_ks` and uses information from the configuration in `Chan14.mat` and `configFile16.m` to run Kilosort. 
+The directory kilosort_and_phy_pre_and_post contains scripts to run Kilosort and post process data after manual curation in phy. `denoise_and_run_ks` calls a function to remove noise (`removeLineNoise_SpectrumEstimation.m ` downloaded from [here](https://www.mathworks.com/matlabcentral/fileexchange/54228-remove-line-noise)) and `main_kilosort2_ks` and uses information from the configuration in `Chan14.mat` and `configFile16.m` to run Kilosort. 
  
 `recalculate_contamination.m` is a script you can use to force recalculation of the contamination percentage after merging or splitting a cluster (it calls `set_cutoff_ks.m`).  
 
