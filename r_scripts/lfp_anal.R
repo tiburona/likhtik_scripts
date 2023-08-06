@@ -91,6 +91,5 @@ pl_theta1$power_by_category_plot
 
 
 
-# 
 
 
