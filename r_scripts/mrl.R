@@ -54,7 +54,7 @@ pl_delta_wavelet_result$plot
 ### Theta 1 ###
 
 pl_theta_1_result = analyze_data('theta_1', 'pl')
-summary(pl_theta_1_result$model)
+summary(pl_theta_1_result$model) 
 pl_theta_1_result$plot
 
 pl_theta_1_wavelet_result = analyze_data('theta_1', 'pl', wavelet=TRUE)
@@ -65,12 +65,36 @@ pl_theta_1_wavelet_result$plot
 ### Theta 2 ###
 
 pl_theta_2_result = analyze_data('theta_2', 'pl')
-summary(pl_theta_2_result$model)
+summary(pl_theta_2_result$model) 
 pl_theta_2_result$plot
 
 pl_theta_2_wavelet_result = analyze_data('theta_2', 'pl', wavelet=TRUE)
-summary(pl_theta_2_wavelet_result$model)
+summary(pl_theta_2_wavelet_result$model) # borderline result here
+qqnorm(resid(pl_theta_2_wavelet_result$model))
+qqline(resid(pl_theta_2_wavelet_result$model))
+# Assuming your model is named "model"
+res <- residuals(pl_theta_2_wavelet_result$model)
+# Assuming your model is named "model"
+plot(fitted(pl_theta_2_wavelet_result$model), residuals(pl_theta_2_wavelet_result$model), 
+     xlab = "Fitted Values", 
+     ylab = "Residuals", 
+     main = "Residuals vs. Fitted Values",
+     pch = 20, col = "blue")
+abline(h = 0, col = "red")  # adds a horizontal line at y = 0
+
+
+# Plot histogram of residuals
+hist(res, freq=FALSE, breaks=30, main="Histogram of Residuals with Density Curve", xlab="Residuals", col="lightgray", border="white")
+
+# Overlay density curve
+curve(dnorm(x, mean(res), sd(res)), add=TRUE, col="blue", lwd=2)
+
 pl_theta_2_wavelet_result$plot
+
+
+result <- df %>%
+  group_by(group_var) %>%
+  summarize(mean_value = mean(value_var, na.rm = TRUE))
 
 
 ### Gamma ###
@@ -83,6 +107,16 @@ pl_gamma_wavelet_result = analyze_data('gamma', 'pl', wavelet=TRUE)
 summary(pl_gamma_wavelet_result$model) # medium result here
 pl_gamma_wavelet_result$plot
 
+frequency_band = 'gamma'
+wavelet_string = 'wavelet_'
+brain_region = 'pl'
+csv_name = sprintf('mrl_%s_continuous_period_frequency_bins_%s%s.csv', frequency_band, wavelet_string, brain_region)  # Assuming you want to append .csv to the frequency_band
+csv_file = paste(csv_dir, csv_name, sep='/')
+pl_gamma_data = prepare_df(csv_file)
+
+average_pl_gamma <- pl_gamma_data %>%
+  group_by('frequency_bin') %>%
+  summarize(mean_value = mean(value_var, na.rm = TRUE))
 
 ### HGamma ###
 
@@ -90,8 +124,8 @@ pl_hgamma_result = analyze_data('hgamma', 'pl')
 summary(pl_hgamma_result$model)
 pl_hgamma_result$plot
 
-pl_hgamma_wavelet_result = analyze_data('hgamma', 'pl', wavelet=TRUE)
-summary(pl_hgamma_wavelet_result$model) # medium result here
+pl_hgamma_wavelet_result = analyze_data('hgamma's, 'pl', wavelet=TRUE)
+summary(pl_hgamma_wavelet_result$model) # v. strong result here
 pl_hgamma_wavelet_result$plot
 
 
@@ -100,7 +134,7 @@ pl_hgamma_wavelet_result$plot
 ### Delta ###
 
 hpc_delta_result = analyze_data('delta', 'hpc')
-summary(hpc_delta_result$model) # very weak result here
+summary(hpc_delta_result$model) 
 hpc_delta_result$plot
 
 hpc_delta_wavelet_result = analyze_data('delta', 'hpc', wavelet=TRUE)
@@ -122,7 +156,7 @@ hpc_theta_1_wavelet_result$plot
 ### Theta 2 ###
 
 hpc_theta_2_result = analyze_data('theta_2', 'hpc')
-summary(hpc_theta_2_result$model) # weak result here
+summary(hpc_theta_2_result$model)
 hpc_theta_2_result$plot
 
 hpc_theta_2_wavelet_result = analyze_data('theta_2', 'hpc', wavelet=TRUE)
