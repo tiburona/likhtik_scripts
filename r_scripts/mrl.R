@@ -1,4 +1,5 @@
 library(glmmTMB)
+library(ggpattern)
 library(lme4)
 library(lmerTest)  # for lmer p-values
 library(readr)
@@ -7,36 +8,97 @@ library(ggplot2)
 library(broom)
 library(emmeans)
 library(dplyr)
+library(rlang)
+library(readr)
+
 
 csv_dir = '/Users/katie/likhtik/data/lfp/mrl'
 
-prepare_df <- function(csv){
-  df <- read_csv(csv)
+
+
+prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
+ 
+  csv_name = sprintf('mrl_%s_continuous_period_frequency_bins_wavelet_%s.csv', frequency_band, brain_region)
+  csv_file = paste(csv_dir, csv_name, sep='/')
+  df <- read_csv(csv_file) 
   
   # Convert variables to factors
   factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
   df[factor_vars] <- lapply(df[factor_vars], factor)
   
-  return(df)
+  # Convert frequency_band to a symbol for tidy evaluation
+  mrl_column <- sym(paste0(frequency_band, "_mrl"))
+  
+  averaged_over_unit_result <- df %>%
+    group_by(animal, period_type, period, neuron_type, group, frequency_bin) %>%
+    summarize(
+      mean_mrl = mean(!!mrl_column, na.rm = TRUE)
+    ) %>%
+    ungroup()
+  
+  data_to_return <- averaged_over_unit_result
+  
+  if (evoked) {
+    pretone_data <- subset(averaged_over_unit_result, period_type == "pretone")
+    tone_data <- subset(averaged_over_unit_result, period_type == "tone")
+    
+    # Merge the datasets by all columns other than gamma_mrl and period_type
+    merged_data <- merge(pretone_data, tone_data, by = setdiff(names(averaged_over_unit_result), c("mean_mrl", "period_type")))
+    
+    # Subtract gamma_mrl values: pretone - tone
+    merged_data$mrl_diff <- merged_data$mean_mrl.x - merged_data$mean_mrl.y
+    data_to_return <- averaged_over_unit_result
+  }
+  
+  return(data_to_return) 
 }
 
-analyze_data <- function(frequency_band, brain_region, wavelet=FALSE) {
-  if (wavelet) {
-    wavelet_string = 'wavelet_'
-    error_term = '(1|animal/unit/period)'
+
+analyze_data <- function(frequency_band, brain_region, evoked=FALSE) {
+  data = prepare_df(frequency_band, brain_region, evoked=evoked)
+  if (evoked) {
+    formula = 'mean_mrl ~ group*neuron_type + (1|animal/period/unit)'
   } else {
-    wavelet_string = ''
-    error_term = '(1|animal/unit)'
+    formula = 'mean_mrl ~ group*neuron_type*period_type + (1|animal/period/unit)'
   }
-  csv_name = sprintf('mrl_%s_continuous_period_frequency_bins_%s%s.csv', frequency_band, wavelet_string, brain_region)  # Assuming you want to append .csv to the frequency_band
-  csv_file = paste(csv_dir, csv_name, sep='/')
-  data = prepare_df(csv_file)
-  formula = paste(frequency_band, '_mrl ~ group*neuron_type*period_type + ', error_term, sep='')
-  # formula = paste('None_mrl ~ group*neuron_type*period_type + ', error_term, sep='')
   model = lmer(formula=formula, data=data)
-  plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
-  return(list(model = model, plot = plot))
+  if (evoked) {
+    plot = emmip(model, group ~ neuron_type, CIs = FALSE)
+  } else {
+    plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
+  }
+  return(list(model = model, plot = plot, data=data))
 }
+
+
+bootstrap_model <- function(fit, nsim=1000) {
+  boot_results <- bootMer(fit, FUN=fixef, nsim)
+  
+  num_effects <- ncol(boot_results$t)
+  
+  # Initialize a matrix to store the confidence intervals:
+  ci_matrix <- matrix(0, nrow=2, ncol=num_effects)
+  
+  # Loop through each effect to calculate confidence intervals:
+  for (i in 1:num_effects) {
+    ci_matrix[,i] <- quantile(boot_results$t[,i], c(0.025, 0.975))
+  }
+  
+  # Convert matrix to data frame and add names for clarity:
+  ci_df <- as.data.frame(t(ci_matrix))
+  colnames(ci_df) <- c("2.5%", "97.5%")
+  rownames(ci_df) <- names(fixef(fit))
+  
+  # Add an asterisk for effects where CI does not include 0:
+  ci_df$significance <- ifelse(ci_df$`2.5%` > 0 | ci_df$`97.5%` < 0, "*", "")
+  
+  # Print the results:
+  print(ci_df)
+  
+  # Return the data frame in case the user wants to save or manipulate it further:
+  return(ci_df)
+}
+
 
 
 #### PL #####
@@ -45,56 +107,43 @@ analyze_data <- function(frequency_band, brain_region, wavelet=FALSE) {
 pl_delta_result = analyze_data('delta', 'pl')
 summary(pl_delta_result$model)
 pl_delta_result$plot
+pl_delta_bootstrap = bootstrap_model(pl_delta_result$model)
 
-pl_delta_wavelet_result = analyze_data('delta', 'pl', wavelet=TRUE)
-summary(pl_delta_wavelet_result$model)
-pl_delta_wavelet_result$plot
+pl_delta_evoked_result = analyze_data('delta', 'pl', evoked=TRUE)
+summary(pl_delta_evoked_result$model)
+pl_delta_evoked_result$plot
+pl_delta_evoked_bootstrap = bootstrap_model(pl_delta_evoked_result$model)
+
 
 
 ### Theta 1 ###
 
 pl_theta_1_result = analyze_data('theta_1', 'pl')
-summary(pl_theta_1_result$model) 
+summary(pl_theta_1_result$model)
 pl_theta_1_result$plot
+pl_theta_1_bootstrap = bootstrap_model(pl_theta_1_result$model)
 
-pl_theta_1_wavelet_result = analyze_data('theta_1', 'pl', wavelet=TRUE)
-summary(pl_theta_1_wavelet_result$model)
-pl_theta_1_wavelet_result$plot
+pl_theta_1_evoked_result = analyze_data('theta_1', 'pl', evoked=TRUE)
+summary(pl_theta_1_evoked_result$model)
+pl_theta_1_evoked_result$plot
+pl_theta_1_evoked_bootstrap = bootstrap_model(pl_theta_1_evoked_result$model)
+
+
+
+
 
 
 ### Theta 2 ###
 
 pl_theta_2_result = analyze_data('theta_2', 'pl')
-summary(pl_theta_2_result$model) 
+summary(pl_theta_2_result$model)
 pl_theta_2_result$plot
+pl_theta_2_bootstrap = bootstrap_model(pl_theta_2_result$model)
 
-pl_theta_2_wavelet_result = analyze_data('theta_2', 'pl', wavelet=TRUE)
-summary(pl_theta_2_wavelet_result$model) # borderline result here
-qqnorm(resid(pl_theta_2_wavelet_result$model))
-qqline(resid(pl_theta_2_wavelet_result$model))
-# Assuming your model is named "model"
-res <- residuals(pl_theta_2_wavelet_result$model)
-# Assuming your model is named "model"
-plot(fitted(pl_theta_2_wavelet_result$model), residuals(pl_theta_2_wavelet_result$model), 
-     xlab = "Fitted Values", 
-     ylab = "Residuals", 
-     main = "Residuals vs. Fitted Values",
-     pch = 20, col = "blue")
-abline(h = 0, col = "red")  # adds a horizontal line at y = 0
-
-
-# Plot histogram of residuals
-hist(res, freq=FALSE, breaks=30, main="Histogram of Residuals with Density Curve", xlab="Residuals", col="lightgray", border="white")
-
-# Overlay density curve
-curve(dnorm(x, mean(res), sd(res)), add=TRUE, col="blue", lwd=2)
-
-pl_theta_2_wavelet_result$plot
-
-
-result <- df %>%
-  group_by(group_var) %>%
-  summarize(mean_value = mean(value_var, na.rm = TRUE))
+pl_theta_2_evoked_result = analyze_data('theta_2', 'pl', evoked=TRUE)
+summary(pl_theta_2_evoked_result$model)
+pl_theta_2_evoked_result$plot
+pl_theta_2_evoked_bootstrap = bootstrap_model(pl_theta_2_evoked_result$model)
 
 
 ### Gamma ###
@@ -102,31 +151,26 @@ result <- df %>%
 pl_gamma_result = analyze_data('gamma', 'pl')
 summary(pl_gamma_result$model)
 pl_gamma_result$plot
+pl_gamma_bootstrap = bootstrap_model(pl_gamma_result$model)
 
-pl_gamma_wavelet_result = analyze_data('gamma', 'pl', wavelet=TRUE)
-summary(pl_gamma_wavelet_result$model) # medium result here
-pl_gamma_wavelet_result$plot
+pl_gamma_evoked_result = analyze_data('gamma', 'pl', evoked=TRUE)
+summary(pl_gamma_evoked_result$model)
+pl_gamma_evoked_result$plot
+pl_gamma_evoked_bootstrap = bootstrap_model(pl_gamma_evoked_result$model)
 
-frequency_band = 'gamma'
-wavelet_string = 'wavelet_'
-brain_region = 'pl'
-csv_name = sprintf('mrl_%s_continuous_period_frequency_bins_%s%s.csv', frequency_band, wavelet_string, brain_region)  # Assuming you want to append .csv to the frequency_band
-csv_file = paste(csv_dir, csv_name, sep='/')
-pl_gamma_data = prepare_df(csv_file)
-
-average_pl_gamma <- pl_gamma_data %>%
-  group_by('frequency_bin') %>%
-  summarize(mean_value = mean(value_var, na.rm = TRUE))
 
 ### HGamma ###
 
 pl_hgamma_result = analyze_data('hgamma', 'pl')
 summary(pl_hgamma_result$model)
 pl_hgamma_result$plot
+pl_hgamma_bootstrap = bootstrap_model(pl_hgamma_result$model)
 
-pl_hgamma_wavelet_result = analyze_data('hgamma's, 'pl', wavelet=TRUE)
-summary(pl_hgamma_wavelet_result$model) # v. strong result here
-pl_hgamma_wavelet_result$plot
+pl_hgamma_evoked_result = analyze_data('hgamma', 'pl', evoked=TRUE)
+summary(pl_hgamma_evoked_result$model)
+pl_hgamma_evoked_result$plot
+pl_hgamma_evoked_bootstrap = bootstrap_model(pl_hgamma_evoked_result$model)
+
 
 
 
@@ -134,12 +178,15 @@ pl_hgamma_wavelet_result$plot
 ### Delta ###
 
 hpc_delta_result = analyze_data('delta', 'hpc')
-summary(hpc_delta_result$model) 
+summary(hpc_delta_result$model)
 hpc_delta_result$plot
+hpc_delta_bootstrap = bootstrap_model(hpc_delta_result$model)
 
-hpc_delta_wavelet_result = analyze_data('delta', 'hpc', wavelet=TRUE)
-summary(hpc_delta_wavelet_result$model)
-hpc_delta_wavelet_result$plot
+hpc_delta_evoked_result = analyze_data('delta', 'hpc', evoked=TRUE)
+summary(hpc_delta_evoked_result$model)
+hpc_delta_evoked_result$plot
+hpc_delta_evoked_bootstrap = bootstrap_model(hpc_delta_evoked_result$model)
+
 
 
 ### Theta 1 ###
@@ -147,10 +194,13 @@ hpc_delta_wavelet_result$plot
 hpc_theta_1_result = analyze_data('theta_1', 'hpc')
 summary(hpc_theta_1_result$model)
 hpc_theta_1_result$plot
+hpc_theta_1_bootstrap = bootstrap_model(hpc_theta_1_result$model)
 
-hpc_theta_1_wavelet_result = analyze_data('theta_1', 'hpc', wavelet=TRUE)
-summary(hpc_theta_1_wavelet_result$model)
-hpc_theta_1_wavelet_result$plot
+hpc_theta_1_evoked_result = analyze_data('theta_1', 'hpc', evoked=TRUE)
+summary(hpc_theta_1_evoked_result$model)
+hpc_theta_1_evoked_result$plot
+hpc_theta_1_evoked_bootstrap = bootstrap_model(hpc_theta_1_evoked_result$model)
+
 
 
 ### Theta 2 ###
@@ -158,10 +208,12 @@ hpc_theta_1_wavelet_result$plot
 hpc_theta_2_result = analyze_data('theta_2', 'hpc')
 summary(hpc_theta_2_result$model)
 hpc_theta_2_result$plot
+hpc_theta_2_bootstrap = bootstrap_model(hpc_theta_2_result$model)
 
-hpc_theta_2_wavelet_result = analyze_data('theta_2', 'hpc', wavelet=TRUE)
-summary(hpc_theta_2_wavelet_result$model) # weak result here
-hpc_theta_2_wavelet_result$plot
+hpc_theta_2_evoked_result = analyze_data('theta_2', 'hpc', evoked=TRUE)
+summary(hpc_theta_2_evoked_result$model)
+hpc_theta_2_evoked_result$plot
+hpc_theta_2_evoked_bootstrap = bootstrap_model(hpc_theta_2_evoked_result$model)
 
 
 ### Gamma ###
@@ -169,10 +221,12 @@ hpc_theta_2_wavelet_result$plot
 hpc_gamma_result = analyze_data('gamma', 'hpc')
 summary(hpc_gamma_result$model)
 hpc_gamma_result$plot
+hpc_gamma_bootstrap = bootstrap_model(hpc_gamma_result$model)
 
-hpc_gamma_wavelet_result = analyze_data('gamma', 'hpc', wavelet=TRUE)
-summary(hpc_gamma_wavelet_result$model) # strong result here
-hpc_gamma_wavelet_result$plot
+hpc_gamma_evoked_result = analyze_data('gamma', 'hpc', evoked=TRUE)
+summary(hpc_gamma_evoked_result$model)
+hpc_gamma_evoked_result$plot
+hpc_gamma_evoked_bootstrap = bootstrap_model(hpc_gamma_evoked_result$model)
 
 
 ### HGamma ###
@@ -180,10 +234,12 @@ hpc_gamma_wavelet_result$plot
 hpc_hgamma_result = analyze_data('hgamma', 'hpc')
 summary(hpc_hgamma_result$model)
 hpc_hgamma_result$plot
+hpc_hgamma_bootstrap = bootstrap_model(hpc_hgamma_result$model)
 
-hpc_hgamma_wavelet_result = analyze_data('hgamma', 'hpc', wavelet=TRUE)
-summary(hpc_hgamma_wavelet_result$model) # strong result here
-hpc_hgamma_wavelet_result$plot
+hpc_hgamma_evoked_result = analyze_data('hgamma', 'hpc', evoked=TRUE)
+summary(hpc_hgamma_evoked_result$model)
+hpc_hgamma_evoked_result$plot
+hpc_hgamma_evoked_bootstrap = bootstrap_model(hpc_hgamma_evoked_result$model)
 
 
 #### BLA #####
@@ -192,10 +248,13 @@ hpc_hgamma_wavelet_result$plot
 bla_delta_result = analyze_data('delta', 'bla')
 summary(bla_delta_result$model)
 bla_delta_result$plot
+bla_delta_bootstrap = bootstrap_model(bla_delta_result$model)
 
-bla_delta_wavelet_result = analyze_data('delta', 'bla', wavelet=TRUE)
-summary(bla_delta_wavelet_result$model)
-bla_delta_wavelet_result$plot
+bla_delta_evoked_result = analyze_data('delta', 'bla', evoked=TRUE)
+summary(bla_delta_evoked_result$model)
+bla_delta_evoked_result$plot
+bla_delta_evoked_bootstrap = bootstrap_model(bla_delta_evoked_result$model)
+
 
 
 ### Theta 1 ###
@@ -203,10 +262,12 @@ bla_delta_wavelet_result$plot
 bla_theta_1_result = analyze_data('theta_1', 'bla')
 summary(bla_theta_1_result$model)
 bla_theta_1_result$plot
+bla_theta_1_bootstrap = bootstrap_model(bla_theta_1_result$model)
 
-bla_theta_1_wavelet_result = analyze_data('theta_1', 'bla', wavelet=TRUE)
-summary(bla_theta_1_wavelet_result$model)
-bla_theta_1_wavelet_result$plot
+bla_theta_1_evoked_result = analyze_data('theta_1', 'bla', evoked=TRUE)
+summary(bla_theta_1_evoked_result$model)
+bla_theta_1_evoked_result$plot
+bla_theta_1_evoked_bootstrap = bootstrap_model(bla_theta_1_evoked_result$model)
 
 
 ### Theta 2 ###
@@ -214,20 +275,25 @@ bla_theta_1_wavelet_result$plot
 bla_theta_2_result = analyze_data('theta_2', 'bla')
 summary(bla_theta_2_result$model)
 bla_theta_2_result$plot
+bla_theta_2_bootstrap = bootstrap_model(bla_theta_2_result$model)
 
-bla_theta_2_wavelet_result = analyze_data('theta_2', 'bla', wavelet=TRUE)
-summary(bla_theta_2_wavelet_result$model)
-bla_theta_2_wavelet_result$plot
+bla_theta_2_evoked_result = analyze_data('theta_2', 'bla', evoked=TRUE)
+summary(bla_theta_2_evoked_result$model)
+bla_theta_2_evoked_result$plot
+bla_theta_2_evoked_bootstrap = bootstrap_model(bla_theta_2_evoked_result$model)
+
 
 ### Gamma ###
 
 bla_gamma_result = analyze_data('gamma', 'bla')
 summary(bla_gamma_result$model)
 bla_gamma_result$plot
+bla_gamma_bootstrap = bootstrap_model(bla_gamma_result$model)
 
-bla_gamma_wavelet_result = analyze_data('gamma', 'bla', wavelet=TRUE)
-summary(bla_gamma_wavelet_result$model) # strong result here
-bla_gamma_wavelet_result$plot
+bla_gamma_evoked_result = analyze_data('gamma', 'bla', evoked=TRUE)
+summary(bla_gamma_evoked_result$model)
+bla_gamma_evoked_result$plot
+bla_gamma_evoked_bootstrap = bootstrap_model(bla_gamma_evoked_result$model)
 
 
 ### HGamma ###
@@ -235,41 +301,9 @@ bla_gamma_wavelet_result$plot
 bla_hgamma_result = analyze_data('hgamma', 'bla')
 summary(bla_hgamma_result$model)
 bla_hgamma_result$plot
+bla_hgamma_bootstrap = bootstrap_model(bla_hgamma_result$model)
 
-bla_hgamma_wavelet_result = analyze_data('hgamma', 'bla', wavelet=TRUE)
-summary(bla_hgamma_wavelet_result$model) # strong result here
-bla_hgamma_wavelet_result$plot
-
-print_duplicates <- function(data, column_name) {
-  # Identify rows with duplicate values in the specified column
-  duplicated_rows <- data[duplicated(data[[column_name]]) | 
-                            duplicated(data[[column_name]], fromLast = TRUE), ]
-  
-  # If there are any duplicates, print the other columns' names and values
-  if(nrow(duplicated_rows) > 0) {
-    for(i in 1:nrow(duplicated_rows)) {
-      cat("Row with duplicate value in", column_name, "\n")
-      for(col in names(duplicated_rows)) {
-        if(col != column_name) {
-          value <- duplicated_rows[i, col]
-          if(is.list(value) || is.data.frame(value)) {
-            value <- paste(capture.output(print(value)), collapse = " ")
-          }
-          cat(col, ":", value, "\n")
-        }
-      }
-      cat("\n")
-    }
-  } else {
-    cat("No duplicates found in the column", column_name, "\n")
-  }
-}
-# 
-# # Call the function
-# column_name <- "hgamma_mrl"  
-# print_duplicates(bla_hgamma_df, column_name)
-# 
-# # Call the function for your column name
-# bla_hgamma_df = prepare_df('/Users/katie/likhtik/data/lfp/mrl/mrl_hgamma_continuous_period_frequency_bins_bla.csv')
-# column_name <- "hgamma_mrl"  # Replace with the name of your column
-# print_duplicates(bla_hgamma_df, column_name)
+bla_hgamma_evoked_result = analyze_data('hgamma', 'bla', evoked=TRUE)
+summary(bla_hgamma_evoked_result$model)
+bla_hgamma_evoked_result$plot
+bla_hgamma_evoked_bootstrap = bootstrap_model(bla_hgamma_evoked_result$model)
