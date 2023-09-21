@@ -271,6 +271,68 @@ hpc_theta_1_fx_result = analyze_data('theta_1', 'hpc', formula='mrl ~ group*neur
 summary(hpc_theta_1_fx_result$model)
 hpc_theta_1_fx_result$plot
 
+hpc_theta_1_data <- prepare_non_wavelet_df('theta_1', 'hpc')
+bt1_control_PN <- subset(hpc_theta_1_data , (group == 'control') & (neuron_type == 'PN'))
+bt1_control_IN <- subset(hpc_theta_1_data , (group == 'control') & (neuron_type == 'IN'))
+bt1_stressed_PN <- subset(hpc_theta_1_data , (group == 'stressed') & (neuron_type == 'PN'))
+bt1_stressed_IN <- subset(hpc_theta_1_data , (group == 'stressed') & (neuron_type == 'IN'))
+
+bt1_posthoc_control_PN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_control_PN) 
+bt1_posthoc_control_IN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_control_IN) 
+bt1_posthoc_stressed_PN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_stressed_PN) 
+bt1_posthoc_stressed_IN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_stressed_IN) 
+
+summary(bt1_posthoc_control_PN_model)
+summary(bt1_posthoc_control_IN_model)
+summary(bt1_posthoc_stressed_PN_model)
+summary(bt1_posthoc_stressed_IN_model)
+
+
+bt1_tone_PN <- subset(hpc_theta_1_data , (period_type == 'tone') & (neuron_type == 'PN'))
+bt1_tone_IN <- subset(hpc_theta_1_data , (period_type == 'tone') & (neuron_type == 'IN'))
+bt1_pretone_PN <- subset(hpc_theta_1_data , (period_type == 'pretone') & (neuron_type == 'PN'))
+bt1_pretone_IN <- subset(hpc_theta_1_data , (period_type == 'pretone') & (neuron_type == 'IN'))
+
+bt1_posthoc_tone_PN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone_PN) 
+bt1_posthoc_tone_IN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone_IN) 
+bt1_posthoc_pretone_PN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone_PN) 
+bt1_posthoc_pretone_IN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone_IN) 
+
+summary(bt1_posthoc_tone_PN_model)
+summary(bt1_posthoc_tone_IN_model)
+summary(bt1_posthoc_pretone_PN_model)
+summary(bt1_posthoc_pretone_IN_model)
+
+bt1_tone <- subset(hpc_theta_1_data , (period_type == 'tone') )
+bt1_pretone <- subset(hpc_theta_1_data , (period_type == 'pretone') )
+
+bt1_posthoc_tone_model <- lmer(mrl ~ neuron_type + (1|animal/unit), data=bt1_tone)
+bt1_posthoc_pretone_model <- lmer(mrl ~ neuron_type + (1|animal/unit), data=bt1_pretone)
+
+summary(bt1_posthoc_tone_model)
+summary(bt1_posthoc_pretone_model)
+
+bt1_posthoc_tone_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone)
+bt1_posthoc_pretone_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone)
+
+
+summary(bt1_posthoc_tone_model_group)
+summary(bt1_posthoc_pretone_model_group)
+
+
+
+
+bt1_posthoc_tone_x_model <- lmer(mrl ~ neuron_type * group + (1|animal/unit), data=bt1_tone)
+bt1_posthoc_pretone_x_model <- lmer(mrl ~ neuron_type * group + (1|animal/unit), data=bt1_pretone)
+
+summary(bt1_posthoc_tone_x_model)
+summary(bt1_posthoc_pretone_x_model)
+
+bla_theta_1_fx_result = analyze_data('theta_1', 'bla', formula='mrl ~ group*neuron_type*period_type + period +  (1|animal)')
+summary(bla_theta_1_fx_result$model)
+bla_theta_1_fx_result$plot
+
+
 
 ### Theta 2 ###
 
@@ -319,13 +381,17 @@ bla_delta_fx_result$plot
 
 ### Theta 1 ###
 
-bla_theta_1_result = analyze_data('theta_1', 'bla')
+bla_theta_1_result = analyze_data('theta_1', 'bla') 
 summary(bla_theta_1_result$model)
 bla_theta_1_result$plot
+
+
 
 bla_theta_1_fx_result = analyze_data('theta_1', 'bla', formula='mrl ~ group*neuron_type*period_type + period +  (1|animal)')
 summary(bla_theta_1_fx_result$model)
 bla_theta_1_fx_result$plot
+
+
 
 
 ### Theta 2 ###

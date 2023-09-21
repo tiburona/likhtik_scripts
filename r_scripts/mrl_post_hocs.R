@@ -186,8 +186,7 @@ bar_plot <- function(data_means) {
 }
 
 
-
-quadrant_post_hocs <- function(data, brain_region, frequency_band) {
+post_hocs <- function(data, brain_region, frequency_band, division = "quadrants") {
   
   # Define the variables and their levels
   variables <- list(
@@ -197,32 +196,49 @@ quadrant_post_hocs <- function(data, brain_region, frequency_band) {
   )
   
   # Inner function to fit the model and generate the result sentence
-  generate_result <- function(subsetted_data, test_var, level1, level2) {
-    formula <- as.formula(paste("mrl ~", test_var, "+ (1|animal/unit)"))
+  generate_result <- function(subsetted_data, fixed_effect, level1, level2 = NULL) {
+    formula <- as.formula(paste("mrl ~", fixed_effect, "+ (1|animal/unit)"))
     model <- lmer(formula, data=subsetted_data)
     p_value <- summary(model)$coefficients[2,5]
     
     asterisks <- ifelse(p_value < 0.001, "***", ifelse(p_value < 0.01, "**", ifelse(p_value < 0.05, "*", "")))
     
-    if (p_value < 0.05) {
-      return(paste("Within ", brain_region, " ", frequency_band, " the effect of", test_var, "within", level1, "and", level2, "was significant at", p_value, asterisks, "."))
+    if (is.null(level2)) {
+      sentence <- paste("In", brain_region, frequency_band, "the effect of", fixed_effect, "within", level1)
     } else {
-      return(paste("Within ", brain_region, " ", frequency_band, " the effect of", test_var, "within", level1, "and", level2, "was not significant."))
+      sentence <- paste("In", brain_region, frequency_band, "the effect of", fixed_effect, "within", level1, "and", level2)
+    }
+    
+    if (p_value < 0.05) {
+      return(paste(sentence, "was significant at", p_value, asterisks, "."))
+    } else {
+      return(paste(sentence, "was not significant."))
     }
   }
   
   results <- list()
   
-  # Loop through each combination of two variables
-  for (var1 in names(variables)) {
-    for (var2 in names(variables)) {
-      if (var1 != var2) {
-        test_var <- setdiff(names(variables), c(var1, var2))
-        for (level1 in variables[[var1]]) {
-          for (level2 in variables[[var2]]) {
-            subsetted_data <- subset(data, (data[[var1]] == level1) & (data[[var2]] == level2))
-            results[[paste(level1, level2)]] <- generate_result(subsetted_data, test_var, level1, level2)
+  if (division == "quadrants") {
+    for (var1 in names(variables)) {
+      for (var2 in names(variables)) {
+        if (var1 != var2) {
+          test_var <- setdiff(names(variables), c(var1, var2))
+          for (level1 in variables[[var1]]) {
+            for (level2 in variables[[var2]]) {
+              subsetted_data <- subset(data, (data[[var1]] == level1) & (data[[var2]] == level2))
+              results[[paste(level1, level2, test_var)]] <- generate_result(subsetted_data, test_var, level1, level2)
+            }
           }
+        }
+      }
+    }
+  } else if (division == "halves") {
+    for (var in names(variables)) {
+      for (level in variables[[var]]) {
+        subsetted_data <- subset(data, data[[var]] == level)
+        remaining_vars <- setdiff(names(variables), var)
+        for (fixed_effect in remaining_vars) {
+          results[[paste(level, fixed_effect)]] <- generate_result(subsetted_data, fixed_effect, level)
         }
       }
     }
@@ -232,97 +248,28 @@ quadrant_post_hocs <- function(data, brain_region, frequency_band) {
 }
 
 bla_theta_1_data <- prepare_non_wavelet_df('theta_1', 'bla')
-bla_theta_1_quadrant_post_hoc_results <- quadrant_post_hocs(bla_theta_1_data, 'bla', 'theta_1')
+bla_theta_1_quadrant_post_hoc_results <- post_hocs(bla_theta_1_data, 'bla', 'theta_1')
 
-print(quadrant_post_hoc_results)
+
+print(bla_theta_1_quadrant_post_hoc_results)
+
+bla_theta_1_halves_post_hoc_results <- post_hocs(bla_theta_1_data, 'bla', 'theta_1', division='halves')
+print(bla_theta_1_halves_post_hoc_results)
+
  
 
 
-# Call the function
-results <- analyze_data(your_data)
-print(results)
+hpc_theta_1_data <- prepare_non_wavelet_df('theta_1', 'hpc')
+hpc_theta_1_quadrant_post_hoc_results <- post_hocs(hpc_theta_1_data, 'hpc', 'theta_1')
+
+
+print(hpc_theta_1_quadrant_post_hoc_results)
+
+hpc_theta_1_halves_post_hoc_results <- post_hocs(hpc_theta_1_data, 'hpc', 'theta_1', division='halves')
+print(hpc_theta_1_halves_post_hoc_results)
+
+print(hpc_theta_1_halves_post_hoc_results)
 
 
 
-bla_theta_1_data <- prepare_non_wavelet_df('theta_1', 'bla')
-bt1_control_PN <- subset(bla_theta_1_data , (group == 'control') & (neuron_type == 'PN'))
-bt1_control_IN <- subset(bla_theta_1_data , (group == 'control') & (neuron_type == 'IN'))
-bt1_stressed_PN <- subset(bla_theta_1_data , (group == 'stressed') & (neuron_type == 'PN'))
-bt1_stressed_IN <- subset(bla_theta_1_data , (group == 'stressed') & (neuron_type == 'IN'))
-
-bt1_posthoc_control_PN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_control_PN) 
-bt1_posthoc_control_IN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_control_IN) 
-bt1_posthoc_stressed_PN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_stressed_PN) 
-bt1_posthoc_stressed_IN_model <- lmer(mrl ~ period_type + (1|animal/unit), data=bt1_stressed_IN) 
-
-summary(bt1_posthoc_control_PN_model)
-summary(bt1_posthoc_control_IN_model)
-summary(bt1_posthoc_stressed_PN_model)
-summary(bt1_posthoc_stressed_IN_model)
-
-
-bt1_tone_PN <- subset(bla_theta_1_data , (period_type == 'tone') & (neuron_type == 'PN'))
-bt1_tone_IN <- subset(bla_theta_1_data , (period_type == 'tone') & (neuron_type == 'IN'))
-bt1_pretone_PN <- subset(bla_theta_1_data , (period_type == 'pretone') & (neuron_type == 'PN'))
-bt1_pretone_IN <- subset(bla_theta_1_data , (period_type == 'pretone') & (neuron_type == 'IN'))
-
-bt1_posthoc_tone_PN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone_PN) 
-bt1_posthoc_tone_IN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone_IN) 
-bt1_posthoc_pretone_PN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone_PN) 
-bt1_posthoc_pretone_IN_model <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone_IN) 
-
-summary(bt1_posthoc_tone_PN_model)
-summary(bt1_posthoc_tone_IN_model)
-summary(bt1_posthoc_pretone_PN_model)
-summary(bt1_posthoc_pretone_IN_model)
-
-bt1_tone <- subset(bla_theta_1_data , (period_type == 'tone') )
-bt1_pretone <- subset(bla_theta_1_data , (period_type == 'pretone') )
-
-bt1_posthoc_tone_model <- lmer(mrl ~ neuron_type + (1|animal/unit), data=bt1_tone)
-bt1_posthoc_pretone_model <- lmer(mrl ~ neuron_type + (1|animal/unit), data=bt1_pretone)
-
-summary(bt1_posthoc_tone_model)
-summary(bt1_posthoc_pretone_model)
-
-bt1_posthoc_tone_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_tone)
-bt1_posthoc_pretone_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_pretone)
-
-
-summary(bt1_posthoc_tone_model_group)
-summary(bt1_posthoc_pretone_model_group)
-
-
-bt1_IN <- subset(bla_theta_1_data , (neuron_type == 'IN') )
-bt1_PN <- subset(bla_theta_1_data , (neuron_type == 'PN') )
-bt1_posthoc_IN_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_IN)
-bt1_posthoc_PN_model_group <- lmer(mrl ~ group + (1|animal/unit), data=bt1_PN)
-summary(bt1_posthoc_IN_model_group)
-summary(bt1_posthoc_PN_model_group)
-
-
-
-
-bt1_posthoc_tone_x_model <- lmer(mrl ~ neuron_type * group + (1|animal/unit), data=bt1_tone)
-bt1_posthoc_pretone_x_model <- lmer(mrl ~ neuron_type * group + (1|animal/unit), data=bt1_pretone)
-
-summary(bt1_posthoc_tone_x_model)
-summary(bt1_posthoc_pretone_x_model)
-
-bla_theta_1_fx_result = analyze_data('theta_1', 'bla', formula='mrl ~ group*neuron_type*period_type + period +  (1|animal)')
-summary(bla_theta_1_fx_result$model)
-bla_theta_1_fx_result$plot
-
-
-
-
-### Theta 2 ###
-
-bla_theta_2_result = analyze_data('theta_2', 'bla')
-summary(bla_theta_2_result$model)
-bla_theta_2_result$plot
-
-bla_theta_2_fx_result = analyze_data('theta_2', 'bla', formula='mrl ~ group*neuron_type*period_type + period +  (1|animal)')
-summary(bla_theta_2_fx_result$model)
-bla_theta_2_fx_result$plot
 
