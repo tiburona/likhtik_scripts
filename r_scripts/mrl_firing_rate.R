@@ -11,64 +11,126 @@ library(emmeans)
 library(dplyr)
 library(rlang)
 library(readr)
-library(brms)
-library(data.table)
+
 
 csv_dir = '/Users/katie/likhtik/data/lfp/psth'
 
-csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_68G6Lq.csv'
+csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_rsGlX0.csv'
 
 csv_file = paste(csv_dir, csv_name, sep='/')
 df <- read.csv(csv_file, comment.char="#") 
 
-factor_vars <- c('animal', 'group', 'neuron_type', 'unit',)
+factor_vars <- c('animal', 'group', 'neuron_type', 'period_type', 'unit')
 df[factor_vars] <- lapply(df[factor_vars], factor)
 
-bla_theta_1_firing_rate_model <- lmer(rate ~ bla_theta_1_mrl * group * neuron_type + (1|animal/unit), data=df)
+bla_theta_1_firing_rate_model <- lmer(rate ~ bla_theta_1_mrl * group * period_type * neuron_type + (1|animal/unit), data=df)
 summary(bla_theta_1_firing_rate_model)
 
 # Compute the EMMs
-emm_res <- emmeans(bla_theta_1_firing_rate_model, ~ bla_theta_1_mrl * group * period_type * neuron_type)
+
+mn = mean(df$bla_theta_1_mrl, na.rm=TRUE)
+sd = sd(df$bla_theta_1_mrl, na.rm=TRUE)
+below = mn - sd
+above = mn + sd
 
 # Create the emmip graph
-emmip_plot <- emmip(emm_res, period_type ~ group * bla_theta_1_mrl | neuron_type, position = "dodge")
+emmip_plot <- emmip(bla_theta_1_firing_rate_model, period_type ~ bla_theta_1_mrl | neuron_type, 
+                    at = list(bla_theta_1_mrl = c(below, mn, above)))
 
 print(emmip_plot)
 
-# Convert dataframe to data table
-dt <- as.data.table(df)
-
-# Define the columns by which to split
-split_cols <- setdiff(names(dt), c("rate", "pl_theta_1_mrl", "period_type"))
-
-# Group by the split columns and create a list of sub-data.tables
-splits_list <- dt[, .SD, by = split_cols]
-
-splits <- split(splits_list, seq_len(nrow(splits_list)))
 
 
-compute_diff <- function(subdata) {
-  if (nrow(subdata) != 2) {
-    return(NULL)  # Skip subsets that don't have both tone and pretone
-  }
+csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_VI3DKQ.csv'
+
+csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_percent_freezing_5IBgEv.csv'
+csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_percent_freezing_s6mP1n.csv'
+
+behavior_firing_rate_model <- lmer(rate ~ percent_freezing * group * period_type * neuron_type + (1|animal/unit), data=df)
+summary(behavior_firing_rate_model)
+
+new_data <- expand.grid(
+  percent_freezing = c(mean(df$percent_freezing) - sd(df$percent_freezing), 
+                       mean(df$percent_freezing), 
+                       mean(df$percent_freezing) + sd(df$percent_freezing)),
+  group = unique(df$group),
+  period_type = unique(df$period_type),
+  neuron_type = unique(df$neuron_type)
+)
+
+new_data$predicted_rate <- predict(behavior_firing_rate_model, newdata = new_data, re.form = NA)
+
+ggplot(new_data, aes(x = percent_freezing, y = predicted_rate, color = period_type)) +
+  geom_line() +
+  labs(x = "Percent Freezing", y = "Predicted Firing Rate") +
+  theme_bw() +
+  facet_grid(neuron_type ~ group, scales = "free")
+
+csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_percent_freezing__lfp_from_prev_period.csv'
+
+csv_name = 'psth_mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_percent_freezing__lfp_from_prev_period_row_is_trial.csv'
+
+bla_theta_1_firing_rate_model_trials <- lmer(rate ~ bla_theta_1_mrl * group * period_type * neuron_type + (1|animal/unit/period), data=df)
+summary(bla_theta_1_firing_rate_model_trials)
+
+
+# Create the emmip graph
+emmip_plot <- emmip(bla_theta_1_firing_rate_model_trials, period_type ~ bla_theta_1_mrl | neuron_type, 
+                    at = list(bla_theta_1_mrl = c(below, mn, above)))
+
+print(emmip_plot)
+
+
+new_data <- expand.grid(
+  bla_theta_1_mrl = c(mean(df$bla_theta_1_mrl, na.rm=TRUE) - sd(df$bla_theta_1_mrl, na.rm=TRUE), 
+                      mean(df$bla_theta_1_mrl, na.rm=TRUE), 
+                      mean(df$bla_theta_1_mrl, na.rm=TRUE) + sd(df$bla_theta_1_mrl, na.rm=TRUE)),
   
-  tone_data <- subdata[subdata$period_type == "tone", ]
-  pretone_data <- subdata[subdata$period_type == "pretone", ]
+  group = unique(df$group),
+  period_type = unique(df$period_type),
+  neuron_type = unique(df$neuron_type)
+)
+
+new_data$predicted_rate <- predict(bla_theta_1_firing_rate_model, newdata = new_data, re.form = NA)
+
+ggplot(new_data, aes(x = bla_theta_1_mrl, y = predicted_rate, color = period_type)) +
+  geom_line() +
+  labs(x = "BLA Theta 1 MRL", y = "Predicted Firing Rate") +
+  theme_bw() +
+  facet_grid(neuron_type ~ group, scales = "free")
+
+bla_theta_1_firing_rate_model <- lmer(rate ~ bla_theta_1_mrl * group * period_type * neuron_type + (1|animal/unit), data=df)
+
+pl_theta_1_firing_rate_model <- lmer(rate ~ pl_theta_1_mrl * group * period_type * neuron_type + (1|animal/unit), data=df)
+summary(pl_theta_1_firing_rate_model)
+
+new_data_pl <- expand.grid(
+  pl_theta_1_mrl = c(mean(df$pl_theta_1_mrl, na.rm=TRUE) - sd(df$pl_theta_1_mrl, na.rm=TRUE), 
+                      mean(df$pl_theta_1_mrl, na.rm=TRUE), 
+                      mean(df$pl_theta_1_mrl, na.rm=TRUE) + sd(df$pl_theta_1_mrl, na.rm=TRUE)),
   
-  if (nrow(tone_data) == 0 || nrow(pretone_data) == 0) {
-    return(NULL)  # Skip if either tone or pretone data is missing
-  }
-  
-  evoked_pl_theta_1_mrl <- tone_data$pl_theta_1_mrl - pretone_data$pl_theta_1_mrl
-  evoked_rate <- tone_data$rate - pretone_data$rate
-  
-  # Return a dataframe with the differences and the other columns (excluding rate, pl_theta_1_mrl, and period_type)
-  return(data.frame(subdata[1, setdiff(names(subdata), c("rate", "pl_theta_1_mrl", "period_type"))], evoked_pl_theta_1_mrl, evoked_rate))
-}
+  group = unique(df$group),
+  period_type = unique(df$period_type),
+  neuron_type = unique(df$neuron_type)
+)
 
-results_list <- lapply(splits, compute_diff)
-results_list <- Filter(Negate(is.null), results_list)  # Remove NULLs
-result <- do.call(rbind, results_list)
+new_data_pl$predicted_rate <- predict(pl_theta_1_firing_rate_model, newdata = new_data_pl, re.form = NA)
+
+ggplot(new_data_pl, aes(x = pl_theta_1_mrl, y = predicted_rate, color = period_type)) +
+  geom_line() +
+  labs(x = "PL Theta 1 MRL", y = "Predicted Firing Rate") +
+  theme_bw() +
+  facet_grid(neuron_type ~ group, scales = "free")
 
 
+hpc_theta_1_firing_rate_model <- lmer(rate ~ hpc_theta_1_mrl * group * period_type * neuron_type + (1|animal/unit), data=df)
+summary(hpc_theta_1_firing_rate_model)
 
+mn = mean(df$hpc_theta_1_mrl, na.rm=TRUE)
+sd = sd(df$hpc_theta_1_mrl, na.rm=TRUE)
+below = mn - sd
+above = mn + sd
+emmip_plot <- emmip(hpc_theta_1_firing_rate_model, period_type ~ hpc_theta_1_mrl | neuron_type, 
+                    at = list(hpc_theta_1_mrl = c(below, mn, above)))
+
+print(emmip_plot)

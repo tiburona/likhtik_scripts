@@ -272,4 +272,19 @@ print(hpc_theta_1_halves_post_hoc_results)
 
 
 
+pl_theta_1_data <- prepare_non_wavelet_df('theta_1', 'pl')
+pl_theta_1_quadrant_post_hoc_results <- post_hocs(pl_theta_1_data, 'pl', 'theta_1')
+
+
+print(pl_theta_1_quadrant_post_hoc_results)
+
+pl_theta_1_halves_post_hoc_results <- post_hocs(hpc_theta_1_data, 'pl', 'theta_1', division='halves')
+print(pl_theta_1_halves_post_hoc_results)
+
+print(pl_theta_1_halves_post_hoc_results)
+
+
+
+
+
 
