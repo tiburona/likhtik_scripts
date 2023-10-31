@@ -15,7 +15,6 @@ for mouse = 1:length(mice)
     denoisedNS6 = NS6;
     denoisedNS6.Data = removeLineNoise_SpectrumEstimation(NS6.Data, 30000);
     writeBinary(datadir, denoisedNS6, []);
-    main_kilosort2_ks(datadir, 'Chan14.mat');
 end
 
 function writeBinary(datadir, Data, exclude_electrodes)

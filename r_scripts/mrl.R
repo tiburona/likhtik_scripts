@@ -12,61 +12,41 @@ library(rlang)
 library(readr)
 
 
-csv_dir = '/Users/katie/likhtik/data/lfp/mrl'
+csv_dir = '/Users/katie/likhtik/data/lfp/percent_freezing'
 
 
 
 prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
  
-  csv_name = sprintf('mrl_%s_continuous_period_frequency_bins_wavelet_%s.csv', frequency_band, brain_region)
+  csv_name = 'spike_power_mrl.csv'
   csv_file = paste(csv_dir, csv_name, sep='/')
-  df <- read_csv(csv_file) 
+  df <- read.csv(csv_file, comment.char="#") 
   
   # Convert variables to factors
   factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
   df[factor_vars] <- lapply(df[factor_vars], factor)
   
   # Convert frequency_band to a symbol for tidy evaluation
-  mrl_column <- sym(paste0(frequency_band, "_mrl"))
+  mrl_column <- sym(paste0(brain_region, '_', frequency_band, "_mrl"))
   
-  averaged_over_unit_result <- df %>%
-    group_by(animal, period_type, period, neuron_type, group, frequency_bin) %>%
+  averaged_result <- df %>%
+    group_by(animal, period_type, period, neuron_type, group, unit) %>%
     summarize(
       mean_mrl = mean(!!mrl_column, na.rm = TRUE)
     ) %>%
     ungroup()
   
-  data_to_return <- averaged_over_unit_result
-  
-  if (evoked) {
-    pretone_data <- subset(averaged_over_unit_result, period_type == "pretone")
-    tone_data <- subset(averaged_over_unit_result, period_type == "tone")
-    
-    # Merge the datasets by all columns other than gamma_mrl and period_type
-    merged_data <- merge(pretone_data, tone_data, by = setdiff(names(averaged_over_unit_result), c("mean_mrl", "period_type")))
-    
-    # Subtract gamma_mrl values: pretone - tone
-    merged_data$mrl_diff <- merged_data$mean_mrl.x - merged_data$mean_mrl.y
-    data_to_return <- averaged_over_unit_result
-  }
+  data_to_return <- averaged_result
   
   return(data_to_return) 
 }
 
 
-analyze_data <- function(frequency_band, brain_region, evoked=FALSE) {
-  data = prepare_df(frequency_band, brain_region, evoked=evoked)
-  if (evoked) {
-    formula = 'mean_mrl ~ group*neuron_type + (1|animal/period/unit)'
-  } else {
-    formula = 'mean_mrl ~ group*neuron_type*period_type + (1|animal/period/unit)'
-  }
+analyze_data <- function(frequency_band, brain_region) {
+  data = prepare_df(frequency_band, brain_region)
+  formula = 'mean_mrl ~ group*neuron_type*period_type + (1|animal/unit)'
   model = lmer(formula=formula, data=data)
-  if (evoked) {
-    plot = emmip(model, group ~ neuron_type, CIs = FALSE)
-  } else {
-    plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
-  }
+  plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
   return(list(model = model, plot = plot, data=data))
 }
 
@@ -127,9 +107,6 @@ pl_theta_1_evoked_result = analyze_data('theta_1', 'pl', evoked=TRUE)
 summary(pl_theta_1_evoked_result$model)
 pl_theta_1_evoked_result$plot
 pl_theta_1_evoked_bootstrap = bootstrap_model(pl_theta_1_evoked_result$model)
-
-
-
 
 
 
