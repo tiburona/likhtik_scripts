@@ -1,8 +1,8 @@
 dbstop if error
-%addpath(genpath('/Users/katie/likhtik'));
+addpath(genpath('/Users/katie/likhtik'));
 %load('/Users/katie/likhtik/data/new_data.mat');
-%single_cell_data = process_waveforms(data, ...
-%    '/Users/katie/likhtik/data/graphs/waveforms');
+single_cell_data = process_waveforms(single_cell_data, ...
+    '/Users/katie/likhtik/data/graphs/waveforms');
 single_cell_data = fr_fwhm_kmeans(single_cell_data);
 
 scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds)', ...
@@ -26,9 +26,17 @@ function data = process_waveforms(data, graph_path)
 sampling_rate = 30000; % 30 kHz sampling rate
 wfWin = [-100 200]; % window of samples to take around a spike;
 
+for i = 1:numel(data)
+    data(i).animal = struct();  % Assign an empty struct to the 'animal' field
+end
+
+
 % Loop through animals
 for i = 1:length(data)
     animal = data(i);
+   [~, animal.animal] = fileparts(animal.rootdir);
+
+
 
     chMap = readNPY(fullfile(animal.rootdir, 'channel_map.npy'))+1; 
     
@@ -38,7 +46,7 @@ for i = 1:length(data)
     
     % Read the waveform data from the binary file
     M = memmapfile(file_path);
-    M1 = memmapfile(file_path, 'Format', {'int16', [16 length(M.Data) / 16 / 2], 'data'});
+    M1 = memmapfile(file_path, 'Format', {'int16', [28 length(M.Data) / 28 / 2], 'data'});
     all_data = M1.Data.data(chMap, :);
 
     % Apply a fifth-order median filter to the electrode data
@@ -49,7 +57,7 @@ for i = 1:length(data)
 
         spike_times = animal.units.good(j).spike_times;
         spike_times = spike_times(spike_times > 100 & spike_times < size(M1.Data.data, 2) - 200);
-        electrodes = animal.units.good(j).electrodes;
+        electrodes = animal.units.good(j).electrodes + 1;
 
         % Initialize arrays to store waveforms for each channel
         all_waveforms = zeros(length(spike_times), length(electrodes), wfWin(2) - wfWin(1) + 1);
@@ -105,7 +113,7 @@ for i = 1:length(data)
         
         % Select later spikes for global firing rate calculation to try to
         % reduce early noise
-        spike_times_for_fr = spike_times(spike_times > 15000);
+        spike_times_for_fr = spike_times(spike_times > 30*30000);
         fr = (length(spike_times_for_fr)/(double(spike_times_for_fr(end) - spike_times_for_fr(1))))*sampling_rate;
         animal.units.good(j).firing_rate = fr; 
 
@@ -161,7 +169,7 @@ function plot_waveforms(animal, unit_idx, waveforms, electrodes, pth, varargin)
         ext = '.fig';
     else
         name_str = 'Mean Waveform';
-        ext = '.png';
+        ext = '.fig';
     end
 
     % Set the overall figure title
@@ -209,9 +217,7 @@ function data = fr_fwhm_kmeans(data)
     
     % Perform k-means clustering on FWHM and firing rate data
     k = 2;
-    normalized_FWHM = (all_FWHM - mean(all_FWHM))/std(all_FWHM);
-    normalized_all_firing_rates
-    X = [all_FWHM', all_firing_rates'];
+    X = [normalize(all_FWHM)', normalize(all_firing_rates)'];
 
     % Use K-means++ to initialize the centroids
     centroids = kmeans_plusplus(X, k);
@@ -323,5 +329,8 @@ function centroids = kmeans_plusplus(data, k)
     end
 end
 
+function normalized_x = normalize(x)
+    normalized_x = (x - mean(x))/std(x);
+end
 
 

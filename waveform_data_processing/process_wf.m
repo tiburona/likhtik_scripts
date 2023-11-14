@@ -1,8 +1,9 @@
 dbstop if error
-%addpath(genpath('/Users/katie/likhtik'));
+addpath(genpath('/Users/katie/likhtik'));
+rmpath(genpath('/Users/katie/neuroimaging'));
 %load('/Users/katie/likhtik/data/new_data.mat');
-% single_cell_data = process_waveforms(single_cell_data, ...
-%    '/Users/katie/likhtik/data/graphs/waveforms');
+single_cell_data = process_waveforms(single_cell_data, ...
+    '/Users/katie/likhtik/data/graphs/waveforms');
 single_cell_data = fr_fwhm_kmeans(single_cell_data);
 
 scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (microseconds)', ...
@@ -26,9 +27,17 @@ function data = process_waveforms(data, graph_path)
 sampling_rate = 30000; % 30 kHz sampling rate
 wfWin = [-100 200]; % window of samples to take around a spike;
 
+for i = 1:numel(data)
+    data(i).animal = struct();  % Assign an empty struct to the 'animal' field
+end
+
+
 % Loop through animals
 for i = 1:length(data)
     animal = data(i);
+   [~, animal.animal] = fileparts(animal.rootdir);
+
+
 
     chMap = readNPY(fullfile(animal.rootdir, 'channel_map.npy'))+1; 
     
@@ -38,7 +47,7 @@ for i = 1:length(data)
     
     % Read the waveform data from the binary file
     M = memmapfile(file_path);
-    M1 = memmapfile(file_path, 'Format', {'int16', [16 length(M.Data) / 16 / 2], 'data'});
+    M1 = memmapfile(file_path, 'Format', {'int16', [28 length(M.Data) / 28 / 2], 'data'});
     all_data = M1.Data.data(chMap, :);
 
     % Apply a fifth-order median filter to the electrode data
@@ -49,7 +58,7 @@ for i = 1:length(data)
 
         spike_times = animal.units.good(j).spike_times;
         spike_times = spike_times(spike_times > 100 & spike_times < size(M1.Data.data, 2) - 200);
-        electrodes = animal.units.good(j).electrodes;
+        electrodes = animal.units.good(j).electrodes + 1;
 
         % Initialize arrays to store waveforms for each channel
         all_waveforms = zeros(length(spike_times), length(electrodes), wfWin(2) - wfWin(1) + 1);

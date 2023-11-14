@@ -3,11 +3,13 @@
 library(ggplot2)
 library(dplyr)
 
-csv_name = 'power_hpc_theta_1_power_hpc_theta_2_hpc_replication_power_by_period.csv'
+csv_name = 'power_hpc_theta_1_power_hpc_theta_1_2_duplicate_itamar.csv'
 csv_dir = '/Users/katie/likhtik/data/lfp/power'
 
 csv_file = paste(csv_dir, csv_name, sep='/')
 data <- read.csv(csv_file, comment.char="#") 
+
+read_metadata(csv_file)
 
 # Filter data based on your criteria
 filtered_data <- data[data$period %in% c(0, 1) & 
