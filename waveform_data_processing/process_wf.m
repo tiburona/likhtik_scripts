@@ -18,7 +18,7 @@ scatter_plot(single_cell_data, 'FWHM_microseconds', 'firing_rate', 'FWHM (micros
 %    '<1000');
 
 
-%save('single_cell_data.mat', 'single_cell_data');
+save('single_cell_data.mat', 'single_cell_data');
 
 
 function data = process_waveforms(data, graph_path)
