@@ -14,7 +14,7 @@ def = {'IG155'; 'IG174';'IG175';'IG179'};
 
 mice_with_no_light = {'IG175'; 'IG176'; 'IG177'; 'IG178'; 'IG179'; 'IG180'};
 
-all = vertcat(ctrl, def);
+all = vertcat(def, ctrl);
 
 data_from_beginning = struct();
 
