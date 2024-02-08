@@ -8,8 +8,12 @@ library(ggplot2)
 library(emmeans)
 
 
-power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'kick_tires.csv', sep='/')
+power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'power_with_validated_pips.csv', sep='/')
 power_data <- read.csv(power_csv, comment.char="#") 
+
+power_data$animal = factor(power_data$animal)
+power_data$block_type = factor(power_data$block_type)
+power_data$group = factor(power_data$group)
 
 power_data <- power_data %>%
   filter(4 < time_bin) %>% # this spreadsheet had prestim in it
@@ -55,13 +59,13 @@ hpc_plot <- plot_values_over_blocks(power_data, 'Mean HPC Theta 1 Power', 'hpc_t
 ### Models ####
 
 
-bla_model <- lmer(bla_theta_1_power ~ group * block_type + (1|animal), data=power_data)
+bla_model <- lmer(bla_theta_1_power ~ group * block_type + (1|animal/block), data=power_data)
 summary(bla_model)
 bla_plot = emmip(bla_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted BLA Power") +
-  scale_color_manual(values = c("control" = "green", "stressed" = "orange"))
+  scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
 
-bla_early_block_model <- lmer(bla_theta_1_power ~ group * block_type + (1|animal), data=data_early_blocks)
+bla_early_block_model <- lmer(bla_theta_1_power ~ group * block_type + (1|animal/block), data=data_early_blocks)
 summary(bla_early_block_model)
 bla_early_plot = emmip(bla_early_block_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted BLA Power (first two blocks)") +
@@ -71,13 +75,13 @@ bla_lm_model <- lm(bla_theta_1_power ~ group * block_type * block, data=data_ear
 summary(bla_lm_model)
 
 
-pl_model <- lmer(pl_theta_1_power ~ group * block_type + (1|animal), data=power_data)
+pl_model <- lmer(pl_theta_1_power ~ group * block_type + (1|animal/block), data=power_data)
 summary(pl_model)
 pl_plot = emmip(pl_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted PL Power") +
-  scale_color_manual(values = c("control" = "green", "stressed" = "orange"))
+  scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
 
-pl_early_block_model <- lmer(pl_theta_1_power ~ group * block_type + (1|animal), data=data_early_blocks)
+pl_early_block_model <- lmer(pl_theta_1_power ~ group * block_type + (1|animal/block), data=data_early_blocks)
 summary(pl_early_block_model)
 pl_early_plot = emmip(pl_early_block_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted PL Power (first two blocks)") +
@@ -87,17 +91,17 @@ pl_lm_model <- lm(pl_theta_1_power ~ group * block_type * block, data=data_early
 summary(pl_lm_model)
 
 
-hpc_model <- lmer(hpc_theta_1_power ~ group * block_type + (1|animal), data=power_data)
+hpc_model <- lmer(hpc_theta_1_power ~ group * block_type + (1|animal/block), data=power_data)
 summary(hpc_model)
 hpc_plot = emmip(hpc_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted HPC Power") +
-  scale_color_manual(values = c("control" = "green", "stressed" = "orange"))
+  scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
 
-hpc_early_block_model <- lmer(hpc_theta_1_power ~ group * block_type + (1|animal), data=data_early_blocks)
+hpc_early_block_model <- lmer(hpc_theta_1_power ~ group * block_type + (1|animal/block), data=data_early_blocks)
 summary(hpc_early_block_model)
 hpc_early_plot = emmip(hpc_early_block_model, group ~ block_type, CIs = FALSE) + 
   labs(y = "Predicted HPC Power (first two blocks)") +
-  scale_color_manual(values = c("control" = "green", "stressed" = "orange"))
+  scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
 
 hpc_lm_model <- lm(hpc_theta_1_power ~ group * block_type * block, data=data_early_blocks)
 summary(hpc_lm_model)
