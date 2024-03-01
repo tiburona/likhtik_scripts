@@ -8,7 +8,7 @@ library(ggplot2)
 library(emmeans)
 
 
-power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'power_with_validated_pips.csv', sep='/')
+power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'power_pre_pip.csv', sep='/')
 power_data <- read.csv(power_csv, comment.char="#") 
 
 power_data$animal = factor(power_data$animal)
@@ -16,7 +16,6 @@ power_data$block_type = factor(power_data$block_type)
 power_data$group = factor(power_data$group)
 
 power_data <- power_data %>%
-  filter(4 < time_bin) %>% # this spreadsheet had prestim in it
   group_by(block, group, block_type, animal) %>%
   summarise(
     hpc_theta_1_power = mean(hpc_theta_1_power, na.rm = TRUE),
@@ -25,35 +24,11 @@ power_data <- power_data %>%
     .groups = "drop"  # This line drops the grouping structure and returns a regular data frame
   )
 
+
+
 data_early_blocks <- power_data %>%
   filter(block < 2)
 
-plot_values_over_blocks <- function(data, y_label, y_var) {
-  ggplot(data, aes_string(x = "block", y = y_var, color = "block_type", shape = "block_type")) +
-    stat_summary(fun = mean, geom = "point", size = 3, aes(shape = block_type, color = block_type)) +
-    stat_summary(fun = mean, geom = "line", aes(group = block_type)) +
-    scale_shape_manual(values = c("pretone" = 15, "tone" = 16)) +
-    scale_color_manual(values = c("pretone" = "gray", "tone" = "blue")) +
-    labs(x = "block", y = y_label) +
-    facet_wrap(~ group, ncol = 1) +
-    theme_minimal()
-}
-
-
-
-# BLA #
-bla_plot <- plot_values_over_blocks(power_data, 'Mean BLA Theta 1 Power', 'bla_theta_1_power')
-
-
-
-# PL #
-
-pl_plot <- plot_values_over_blocks(power_data, 'Mean PL Theta 1 Power', 'pl_theta_1_power')
-
-
-# HPC #
-
-hpc_plot <- plot_values_over_blocks(power_data, 'Mean HPC Theta 1 Power', 'hpc_theta_1_power')
 
 
 ### Models ####
