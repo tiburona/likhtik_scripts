@@ -16,7 +16,7 @@ chanMap0ind = chanMap-1;
 connected = ones(14, 1);
 kcoords = ones(14, 1);
 xcoords = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10];
-ycoords = [163, 176, 48, 201, 61, 214, 86, 229, 99, 242, 124, 267, 137, 280];
+ycoords = [163, 176, 48, 201, 61, 214, 86, 130, 60, 140, 70, 150, 80, 160];
 save(fullfile(rootdir, 'chan14.mat'), 'name', 'chanMap', 'chanMap0ind', ...
     'connected', 'kcoords', 'xcoords', 'ycoords');
 
@@ -25,7 +25,7 @@ save(fullfile(rootdir, 'chan14.mat'), 'name', 'chanMap', 'chanMap0ind', ...
 
 for mouse = 1:length(mice)
 
-    datadir = fullfile(rootdir, ['IG' mice{mouse}]);
+    datadir = ['D:\back_up_lenovo\data\Single_Cell_Data_No_Uv_Real_YC\IG' mice{mouse}];
     fpath = fullfile(datadir, 'Safety.ns6');
     NS6 = openFile(datadir, 'Safety.ns6');
     denoisedNS6 = NS6;

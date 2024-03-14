@@ -1,4 +1,4 @@
-function main_kilosort2_ks(dataPath, chanMatFile)
+function main_kilosort2_ks(dataPath, rootDir, chanMapFile)
 
 %% you need to change most of the paths in this block
 
@@ -13,7 +13,6 @@ addpath(genpath('C:\Users\Katie\software\')) % path to kilosort folder
 rootZ = dataPath; % the raw data binary file is in this folder
 rootH = dataPath; % path to temporary binary file (same size as data, should be on fast SSD)
 pathToYourConfigFile = 'C:\Users\Katie\likhtik_scripts\kilosort_and_phy_pre_and_post'; % take from Github folder and put it somewhere else (together with the master_file)
-chanMapFile = 'Chan14.mat';
 
 
 ops.trange = [0 Inf]; % time range to sort
@@ -21,7 +20,7 @@ ops.NchanTOT    = 16; % total number of channels in your recording
 
 run(fullfile(pathToYourConfigFile, 'config14.m'))
 ops.fproc       = fullfile(rootH, 'temp_wh.dat'); % proc file on a fast SSD
-ops.chanMap = fullfile(pathToYourConfigFile, chanMapFile);
+ops.chanMap = fullfile(rootDir, chanMapFile);
 
 %% this block runs all the steps of the algorithm
 fprintf('Looking for data inside %s \n', rootZ)
