@@ -1,7 +1,6 @@
 # This file must be used with "source bin/activate" *from bash*
 # you cannot run it directly
 
-export INIT_CONFIG="/Users/katie/likhtik/CH_for_katie_less_conservative/init_config.json"
 
 if [ "${BASH_SOURCE-}" = "$0" ]; then
     echo "You must source this script: \$ source $0" >&2
@@ -36,6 +35,7 @@ deactivate () {
     fi
 
     unset VIRTUAL_ENV
+    unset VIRTUAL_ENV_PROMPT
     if [ ! "${1-}" = "nondestructive" ] ; then
     # Self destruct!
         unset -f deactivate
@@ -55,6 +55,13 @@ _OLD_VIRTUAL_PATH="$PATH"
 PATH="$VIRTUAL_ENV/bin:$PATH"
 export PATH
 
+if [ "x" != x ] ; then
+    VIRTUAL_ENV_PROMPT=""
+else
+    VIRTUAL_ENV_PROMPT=$(basename "$VIRTUAL_ENV")
+fi
+export VIRTUAL_ENV_PROMPT
+
 # unset PYTHONHOME if set
 if ! [ -z "${PYTHONHOME+_}" ] ; then
     _OLD_VIRTUAL_PYTHONHOME="$PYTHONHOME"
@@ -63,11 +70,7 @@ fi
 
 if [ -z "${VIRTUAL_ENV_DISABLE_PROMPT-}" ] ; then
     _OLD_VIRTUAL_PS1="${PS1-}"
-    if [ "x" != x ] ; then
-        PS1="() ${PS1-}"
-    else
-        PS1="(`basename \"$VIRTUAL_ENV\"`) ${PS1-}"
-    fi
+    PS1="(${VIRTUAL_ENV_PROMPT}) ${PS1-}"
     export PS1
 fi
 
