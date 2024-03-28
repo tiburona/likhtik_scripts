@@ -12,15 +12,17 @@ library(rlang)
 library(readr)
 
 
-csv_dir = '/Users/katie/likhtik/data/lfp/percent_freezing'
+csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/mrl'
 
 
 
 prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
  
-  csv_name = 'spike_power_mrl.csv'
+  csv_name = 'thousand_ms_mrl_thetas_1_and_2.csv'
   csv_file = paste(csv_dir, csv_name, sep='/')
   df <- read.csv(csv_file, comment.char="#") 
+  
+  df <- df[df$neuron_quality != '3']
   
   # Convert variables to factors
   factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
@@ -45,6 +47,9 @@ prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
 analyze_data <- function(frequency_band, brain_region) {
   data = prepare_df(frequency_band, brain_region)
   formula = 'mean_mrl ~ group*neuron_type*period_type + (1|animal/unit)'
+  print(brain_region)
+  print(frequency_band)
+  print(formula)
   model = lmer(formula=formula, data=data)
   plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
   return(list(model = model, plot = plot, data=data))
@@ -82,17 +87,6 @@ bootstrap_model <- function(fit, nsim=1000) {
 
 
 #### PL #####
-### Delta ###
-
-pl_delta_result = analyze_data('delta', 'pl')
-summary(pl_delta_result$model)
-pl_delta_result$plot
-pl_delta_bootstrap = bootstrap_model(pl_delta_result$model)
-
-pl_delta_evoked_result = analyze_data('delta', 'pl', evoked=TRUE)
-summary(pl_delta_evoked_result$model)
-pl_delta_evoked_result$plot
-pl_delta_evoked_bootstrap = bootstrap_model(pl_delta_evoked_result$model)
 
 
 
@@ -103,12 +97,6 @@ summary(pl_theta_1_result$model)
 pl_theta_1_result$plot
 pl_theta_1_bootstrap = bootstrap_model(pl_theta_1_result$model)
 
-pl_theta_1_evoked_result = analyze_data('theta_1', 'pl', evoked=TRUE)
-summary(pl_theta_1_evoked_result$model)
-pl_theta_1_evoked_result$plot
-pl_theta_1_evoked_bootstrap = bootstrap_model(pl_theta_1_evoked_result$model)
-
-
 
 ### Theta 2 ###
 
@@ -117,54 +105,9 @@ summary(pl_theta_2_result$model)
 pl_theta_2_result$plot
 pl_theta_2_bootstrap = bootstrap_model(pl_theta_2_result$model)
 
-pl_theta_2_evoked_result = analyze_data('theta_2', 'pl', evoked=TRUE)
-summary(pl_theta_2_evoked_result$model)
-pl_theta_2_evoked_result$plot
-pl_theta_2_evoked_bootstrap = bootstrap_model(pl_theta_2_evoked_result$model)
-
-
-### Gamma ###
-
-pl_gamma_result = analyze_data('gamma', 'pl')
-summary(pl_gamma_result$model)
-pl_gamma_result$plot
-pl_gamma_bootstrap = bootstrap_model(pl_gamma_result$model)
-
-pl_gamma_evoked_result = analyze_data('gamma', 'pl', evoked=TRUE)
-summary(pl_gamma_evoked_result$model)
-pl_gamma_evoked_result$plot
-pl_gamma_evoked_bootstrap = bootstrap_model(pl_gamma_evoked_result$model)
-
-
-### HGamma ###
-
-pl_hgamma_result = analyze_data('hgamma', 'pl')
-summary(pl_hgamma_result$model)
-pl_hgamma_result$plot
-pl_hgamma_bootstrap = bootstrap_model(pl_hgamma_result$model)
-
-pl_hgamma_evoked_result = analyze_data('hgamma', 'pl', evoked=TRUE)
-summary(pl_hgamma_evoked_result$model)
-pl_hgamma_evoked_result$plot
-pl_hgamma_evoked_bootstrap = bootstrap_model(pl_hgamma_evoked_result$model)
-
-
 
 
 #### HPC #####
-### Delta ###
-
-hpc_delta_result = analyze_data('delta', 'hpc')
-summary(hpc_delta_result$model)
-hpc_delta_result$plot
-hpc_delta_bootstrap = bootstrap_model(hpc_delta_result$model)
-
-hpc_delta_evoked_result = analyze_data('delta', 'hpc', evoked=TRUE)
-summary(hpc_delta_evoked_result$model)
-hpc_delta_evoked_result$plot
-hpc_delta_evoked_bootstrap = bootstrap_model(hpc_delta_evoked_result$model)
-
-
 
 ### Theta 1 ###
 
@@ -172,11 +115,6 @@ hpc_theta_1_result = analyze_data('theta_1', 'hpc')
 summary(hpc_theta_1_result$model)
 hpc_theta_1_result$plot
 hpc_theta_1_bootstrap = bootstrap_model(hpc_theta_1_result$model)
-
-hpc_theta_1_evoked_result = analyze_data('theta_1', 'hpc', evoked=TRUE)
-summary(hpc_theta_1_evoked_result$model)
-hpc_theta_1_evoked_result$plot
-hpc_theta_1_evoked_bootstrap = bootstrap_model(hpc_theta_1_evoked_result$model)
 
 
 
@@ -187,51 +125,10 @@ summary(hpc_theta_2_result$model)
 hpc_theta_2_result$plot
 hpc_theta_2_bootstrap = bootstrap_model(hpc_theta_2_result$model)
 
-hpc_theta_2_evoked_result = analyze_data('theta_2', 'hpc', evoked=TRUE)
-summary(hpc_theta_2_evoked_result$model)
-hpc_theta_2_evoked_result$plot
-hpc_theta_2_evoked_bootstrap = bootstrap_model(hpc_theta_2_evoked_result$model)
 
-
-### Gamma ###
-
-hpc_gamma_result = analyze_data('gamma', 'hpc')
-summary(hpc_gamma_result$model)
-hpc_gamma_result$plot
-hpc_gamma_bootstrap = bootstrap_model(hpc_gamma_result$model)
-
-hpc_gamma_evoked_result = analyze_data('gamma', 'hpc', evoked=TRUE)
-summary(hpc_gamma_evoked_result$model)
-hpc_gamma_evoked_result$plot
-hpc_gamma_evoked_bootstrap = bootstrap_model(hpc_gamma_evoked_result$model)
-
-
-### HGamma ###
-
-hpc_hgamma_result = analyze_data('hgamma', 'hpc')
-summary(hpc_hgamma_result$model)
-hpc_hgamma_result$plot
-hpc_hgamma_bootstrap = bootstrap_model(hpc_hgamma_result$model)
-
-hpc_hgamma_evoked_result = analyze_data('hgamma', 'hpc', evoked=TRUE)
-summary(hpc_hgamma_evoked_result$model)
-hpc_hgamma_evoked_result$plot
-hpc_hgamma_evoked_bootstrap = bootstrap_model(hpc_hgamma_evoked_result$model)
 
 
 #### BLA #####
-### Delta ###
-
-bla_delta_result = analyze_data('delta', 'bla')
-summary(bla_delta_result$model)
-bla_delta_result$plot
-bla_delta_bootstrap = bootstrap_model(bla_delta_result$model)
-
-bla_delta_evoked_result = analyze_data('delta', 'bla', evoked=TRUE)
-summary(bla_delta_evoked_result$model)
-bla_delta_evoked_result$plot
-bla_delta_evoked_bootstrap = bootstrap_model(bla_delta_evoked_result$model)
-
 
 
 ### Theta 1 ###
@@ -241,10 +138,6 @@ summary(bla_theta_1_result$model)
 bla_theta_1_result$plot
 bla_theta_1_bootstrap = bootstrap_model(bla_theta_1_result$model)
 
-bla_theta_1_evoked_result = analyze_data('theta_1', 'bla', evoked=TRUE)
-summary(bla_theta_1_evoked_result$model)
-bla_theta_1_evoked_result$plot
-bla_theta_1_evoked_bootstrap = bootstrap_model(bla_theta_1_evoked_result$model)
 
 
 ### Theta 2 ###
@@ -254,33 +147,5 @@ summary(bla_theta_2_result$model)
 bla_theta_2_result$plot
 bla_theta_2_bootstrap = bootstrap_model(bla_theta_2_result$model)
 
-bla_theta_2_evoked_result = analyze_data('theta_2', 'bla', evoked=TRUE)
-summary(bla_theta_2_evoked_result$model)
-bla_theta_2_evoked_result$plot
-bla_theta_2_evoked_bootstrap = bootstrap_model(bla_theta_2_evoked_result$model)
 
 
-### Gamma ###
-
-bla_gamma_result = analyze_data('gamma', 'bla')
-summary(bla_gamma_result$model)
-bla_gamma_result$plot
-bla_gamma_bootstrap = bootstrap_model(bla_gamma_result$model)
-
-bla_gamma_evoked_result = analyze_data('gamma', 'bla', evoked=TRUE)
-summary(bla_gamma_evoked_result$model)
-bla_gamma_evoked_result$plot
-bla_gamma_evoked_bootstrap = bootstrap_model(bla_gamma_evoked_result$model)
-
-
-### HGamma ###
-
-bla_hgamma_result = analyze_data('hgamma', 'bla')
-summary(bla_hgamma_result$model)
-bla_hgamma_result$plot
-bla_hgamma_bootstrap = bootstrap_model(bla_hgamma_result$model)
-
-bla_hgamma_evoked_result = analyze_data('hgamma', 'bla', evoked=TRUE)
-summary(bla_hgamma_evoked_result$model)
-bla_hgamma_evoked_result$plot
-bla_hgamma_evoked_bootstrap = bootstrap_model(bla_hgamma_evoked_result$model)
