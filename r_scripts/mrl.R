@@ -13,6 +13,10 @@ library(readr)
 
 
 csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/mrl'
+csv_name = 'thousand_ms_mrl_thetas_1_and_2.csv'
+csv_file = paste(csv_dir, csv_name, sep='/')
+df <- read.csv(csv_file, comment.char="#") 
+df <- subset(df, neuron_quality != '3')
 
 
 
@@ -22,7 +26,8 @@ prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
   csv_file = paste(csv_dir, csv_name, sep='/')
   df <- read.csv(csv_file, comment.char="#") 
   
-  df <- df[df$neuron_quality != '3']
+  df <- subset(df, neuron_quality != '3')
+  
   
   # Convert variables to factors
   factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
