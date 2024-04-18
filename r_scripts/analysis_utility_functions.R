@@ -13,7 +13,7 @@ read_metadata <- function(csv_file) {
 }
 
 create_predictions_data <- function(data, model, continuous_predictor, num_vars = 4) {
-
+  
   
   # Check if continuous_predictor is a valid column name
   if (!continuous_predictor %in% names(data)) {

@@ -8,10 +8,10 @@
                 library(ggplot2)
                 library(emmeans)
 
-                df <- read.csv('/Users/katie/likhtik/IG_INED_Safety_Recall/mrl/omnibus_spreadsheet.csv', comment.char="#")
+                df <- read.csv('/Users/katie/likhtik/IG_INED_Safety_Recall/power/psth_power.csv', comment.char="#")
                 subset_df <- subset(df, df$animal %in% c('IG160', 'IG163', 'IG176', 'IG178', 'IG180', 'IG154', 'IG156', 'IG158', 'IG177', 'IG179'))
-                subset_df <- subset(subset_df, subset_df$neuron_quality %in% c('1', '2', '2a', '2b', '2ab'))
-                subset_df <- subset(subset_df, subset_df$time_bin < 40)
+                #subset_df <- subset(subset_df, subset_df$neuron_quality %in% c('1', '2', '2a', '2b', '2ab'))
+                subset_df <- subset(subset_df, subset_df$time_bin < 30)
                 
                 
                 # Convert variables to factors

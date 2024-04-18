@@ -6,92 +6,133 @@ library(lmerTest)
 library(sjPlot)
 library(ggplot2)
 library(emmeans)
+library(ggplot2)
+
+run_analysis <- function(data, region, frequency_band) {
+  # Dynamically build the variable names based on region and frequency
+  power_var <- paste(region, frequency_band, "power", sep = "_")
+  
+  # Filter out rows where the power variable is NA
+  clean_data <- data[!is.na(data[[power_var]]), ]
+  
+  # Define control parameters for the linear mixed-effects model
+  control = lmerControl(check.conv.grad=.makeCC("warning", tol=1e-4), optimizer="bobyqa")
+  
+  # Build the formula string dynamically
+  formula <- as.formula(paste("rate ~ group*period_type*neuron_type*", power_var, 
+                              "+ (1|animal/unit/period)", sep = ""))
+  
+  # Fit the model
+  model <- lmer(formula, data = clean_data, control = control)
+  
+  # Display the summary of the model
+  print(summary(model))
+  
+  # Calculate mean and standard deviation for the power variable
+  mean_power <- mean(data[[power_var]], na.rm = TRUE)
+  sd_power <- sd(data[[power_var]], na.rm = TRUE)
+  
+  pred_data <- expand.grid(
+    group = levels(data$group),
+    period_type = levels(data$period_type),
+    neuron_type = levels(data$neuron_type),
+    power = c(mean_power - sd_power, mean_power, mean_power + sd_power)
+  )
+  
+  # Properly name the power variable in the prediction data
+  names(pred_data)[names(pred_data) == "power"] <- power_var
+  
+  pred_data$predicted_rate <- predict(model, newdata = pred_data, re.form = NA)
+  
+  
+  # Plot the predictions
+  p <- graph_predictions(data=pred_data, 
+                         x=power_var, y='predicted_rate', 
+                         xlabel=paste(toupper(region), frequency_band, "power", sep = " "), 
+                         ylabel='Predicted Firing Rate')
+  
+  # Return both the model and the plot
+  return(list(model = model, plot = p))
+}
+
+
+
 
 ### .3 second periods analyses ###
 
-deviation_csv = paste('/Users/katie/likhtik/data/lfp/percent_freezing', 'theta_power_deviations.csv', sep='/')
-deviation_data <- read.csv(deviation_csv, comment.char="#") 
+csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'psth_power.csv', sep='/')
+data <- read.csv(csv, comment.char="#") 
 
-data_with_rate <- deviation_data %>%
+results <- data %>%
+  filter(!is.na(bla_theta_1_power)) %>%
+  group_by(animal, period, period_type, unit) %>%
+  summarise(event_count = n_distinct(event), .groups = 'drop') %>%
+  mutate(
+    too_many_events = if_else(event_count > 30, "Yes", "No"),
+    excluded_events = if_else(event_count < 30, "Yes", "No")
+  )
+
+excessive_events <- results %>%
+  filter(too_many_events == "Yes")
+
+excluded_events <- results %>%
+  filter(excluded_events == "Yes")
+
+
+factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
+data[factor_vars] <- lapply(data[factor_vars], factor)
+
+data$neuron_type <- factor(data$neuron_type,
+                           levels = c("IN", "PN"))
+data <- data[!is.na(data$neuron_type), ]
+
+data_with_rate <- data %>%
   filter(time_bin < 30) %>%
-  group_by(period, group, period_type, neuron_type, unit, animal, trial) %>%
+  group_by(period, group, period_type, neuron_type, unit, animal, event) %>%
   summarise(
     hpc_theta_1_power = mean(hpc_theta_1_power, na.rm = TRUE),
     bla_theta_1_power = mean(bla_theta_1_power, na.rm = TRUE),
     pl_theta_1_power  = mean(pl_theta_1_power, na.rm = TRUE),
+    hpc_theta_2_power = mean(hpc_theta_2_power, na.rm = TRUE),
+    bla_theta_2_power = mean(bla_theta_2_power, na.rm = TRUE),
+    pl_theta_2_power  = mean(pl_theta_2_power, na.rm = TRUE),
     rate = mean(rate, na.rm = TRUE),
     .groups = "drop"  # This line drops the grouping structure and returns a regular data frame
   )
 
-#### BLA ###
+### BLA THETA 1 ###
 
-bla_rate_power_model <- lmer(rate ~ group*period_type*neuron_type*bla_theta_1_power + (1|animal/unit), data = data_with_rate)
-summary(bla_rate_power_model)
-
-bla_predictions_data <- create_predictions_data(data_with_rate, bla_rate_power_model, 'bla_theta_1_power')
-bla_plot <- graph_predictions(data=predictions, x='bla_theta_1_power', y='predicted', 
-                       xlabel='BLA Theta 1 Power', ylabel='Predicted Firing Rate')
-
-### PL ###
-
-pl_rate_power_model <- lmer(rate ~ group*period_type*neuron_type*pl_theta_1_power + (1|animal/unit), data = data_with_rate)
-summary(pl_rate_power_model)
-
-pl_predictions_data <- create_predictions_data(data_with_rate, pl_rate_power_model, 'pl_theta_1_power')
-pl_plot <- graph_predictions(data=predictions, x='pl_theta_1_power', y='predicted', 
-                       xlabel='PL Theta 1 Power', ylabel='Predicted Firing Rate')
+results <- run_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_1")
+print(results$plot)
 
 
+### BLA THETA 2 ###
 
-### HPC ###
-
-hpc_rate_power_model <- lmer(rate ~ group*period_type*neuron_type*hpc_theta_1_power + (1|animal/unit), data = data_with_rate)
-summary(hpc_rate_power_model)
-
-hpc_predictions_data <- create_predictions_data(data_with_rate, hpc_rate_power_model, 'hpc_theta_1_power')
-hpc_plot <- graph_predictions(data=predictions, x='hpc_theta_1_power', y='predicted', 
-                             xlabel='HPC Theta 1 Power', ylabel='Predicted Firing Rate')
+results <- run_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_2")
+print(results$plot)
 
 
+### PL THETA 1 ###
 
-### Trying the .3 seconds of the last pip + .05, predicting firing rate during pip ###
-
-previous_csv = paste('/Users/katie/likhtik/data/lfp/percent_freezing', 'previous_pip_power.csv', sep='/')
-previous_data <- read.csv(previous_csv, comment.char="#")
-
-previous_data_with_rate <- previous_data %>%
-  filter(time_bin < 30) %>%
-  group_by(period, group, period_type, neuron_type, unit, animal, trial) %>%
-  summarise(
-    mean_hpc_theta_1_power = mean(hpc_theta_1_power, na.rm = TRUE),
-    mean_bla_theta_1_power = mean(bla_theta_1_power, na.rm = TRUE),
-    mean_pl_theta_1_power  = mean(pl_theta_1_power, na.rm = TRUE),
-    mean_rate = mean(rate, na.rm = TRUE),
-    .groups = "drop"  # This line drops the grouping structure and returns a regular data frame
-  )
-
-bla_prev_rate_power_model <- lmer(mean_rate ~ group*period_type*neuron_type*mean_bla_theta_1_power + (1|animal/unit), data = previous_data_with_rate)
-summary(bla_prev_rate_power_model)
+results <- run_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_1")
+print(results$plot)
 
 
+### PL THETA 2 ###
+
+results <- run_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_2")
+print(results$plot)
 
 
-hpc_prev_rate_power_model <- lmer(mean_rate ~ group*period_type*neuron_type*mean_hpc_theta_1_power + (1|animal/unit), data = previous_data_with_rate)
-summary(hpc_prev_rate_power_model)
+### HPC THETA 1 ###
 
-new_data <- expand.grid(
-  mean_hpc_theta_1_power = c(mean(previous_data_with_rate$mean_hpc_theta_1_power) - sd(previous_data_with_rate$mean_hpc_theta_1_power), 
-                             mean(previous_data_with_rate$mean_hpc_theta_1_power), 
-                             mean(previous_data_with_rate$mean_hpc_theta_1_power) + sd(previous_data_with_rate$mean_hpc_theta_1_power)),
-  group = unique(previous_data_with_rate$group),
-  period_type = unique(previous_data_with_rate$period_type),
-  neuron_type = unique(previous_data_with_rate$neuron_type)
-)
+results <- run_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_1")
+print(results$plot)
 
-new_data$predicted_rate <- predict(hpc_rate_power_model, newdata = new_data, re.form = NA)
 
-ggplot(new_data, aes(x = mean_hpc_theta_1_power, y = predicted_rate, color = period_type)) +
-  geom_line() +
-  labs(x = "HPC Theta 1 Power", y = "Predicted Firing Rate") +
-  theme_bw() +
-  facet_grid(neuron_type ~ group, scales = "free")
+### HPC THETA 2 ###
+
+results <- run_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_2")
+print(results$plot)
+
+

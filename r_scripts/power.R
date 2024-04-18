@@ -27,12 +27,12 @@ power_df <- read.csv(power_csv, comment.char="#")
 
 factor_vars <- c('animal', 'group', 'period_type')
 power_df[factor_vars] <- lapply(power_df[factor_vars], factor)
-
-prepip_df <- power_df %>%
-  filter(time_bin < 15)
-
-postpip_df <- power_df %>%
-  filter(time_bin > 14 & time_bin < 45)
+# 
+# prepip_df <- power_df %>%
+#   filter(time_bin < 15)
+# 
+# postpip_df <- power_df %>%
+#   filter(time_bin > 14 & time_bin < 45)
 
 
 group_and_summarize <- function(df, group_vars) {
@@ -55,19 +55,17 @@ group_and_summarize <- function(df, group_vars) {
     )
 }
 
+data_frames <- list(
+  all = power_df
+  #prepip = prepip_df,
+  #postpip = postpip_df
+)
 
-
-make_models_and_graphs <- function(brain_region, frequency_band) {
+make_models_and_graphs <- function(brain_region, frequency_band, data_framees) {
   
   # Create the column name dynamically based on function inputs
   power_col_name <- paste(brain_region, frequency_band, "power", sep="_")
   
-  # Define the list of data frames with appropriate labels
-  data_frames <- list(
-    all = power_df,
-    prepip = prepip_df,
-    postpip = postpip_df
-  )
   
   # Prepare lists to store models and graphs
   models_list <- list()
@@ -131,16 +129,13 @@ bla_theta_1_results <- make_models_and_graphs('bla', 'theta_1')
 
 graphs <- bla_theta_1_results$Graphs
 
-graphs$graph_with_bin_prepip
-graphs$graph_with_bin_postpip
 graphs$graph_with_bin_all
 
 bla_theta_2_results <- make_models_and_graphs('bla', 'theta_2')
 
 graphs <- bla_theta_2_results$Graphs
 
-graphs$graph_with_bin_prepip
-graphs$graph_with_bin_postpip
+
 graphs$graph_with_bin_all
 
 
@@ -158,6 +153,18 @@ graphs <- bla_theta_2_results$Graphs
 
 graphs$graph_with_bin_prepip
 graphs$graph_with_bin_postpip
+graphs$graph_with_bin_all
+
+hpc_theta_1_results <- make_models_and_graphs('hpc', 'theta_1')
+
+graphs <- hpc_theta_1_results$Graphs
+
+graphs$graph_with_bin_all
+
+
+hpc_theta_2_results <- make_models_and_graphs('hpc', 'theta_2')
+graphs <- hpc_theta_2_results$Graphs
+
 graphs$graph_with_bin_all
 
 
