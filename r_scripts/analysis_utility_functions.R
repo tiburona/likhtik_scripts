@@ -12,57 +12,25 @@ read_metadata <- function(csv_file) {
   cat(metadata_lines, sep = "\n")
 }
 
-create_predictions_data <- function(data, model, continuous_predictor, num_vars = 4) {
+create_predictions_data <- function(data, model, continuous_predictor) {
   
   
-  # Check if continuous_predictor is a valid column name
-  if (!continuous_predictor %in% names(data)) {
-    stop("The continuous predictor column was not found in the data frame.")
-  }
+  mean_iv <- mean(data[[continuous_predictor]], na.rm = TRUE)
+  sd_iv <- sd(data[[continuous_predictor]], na.rm = TRUE)
   
-  # Compute mean and standard deviation of continuous predictor
-  mean_pred <- mean(data[[continuous_predictor]], na.rm = TRUE)
-  sd_pred <- sd(data[[continuous_predictor]], na.rm = TRUE)
+  pred_data <- expand.grid(
+    group = levels(clean_data$group),
+    period_type = levels(clean_data$period_type),
+    neuron_type = levels(clean_data$neuron_type),
+    iv = c(mean_iv - sd_iv, mean_iv, mean_iv + sd_iv)
+  )
   
-  # Create new data frame for predictions
-  if (num_vars == 4) {
-    new_data <- expand.grid(
-      mean_predictor = c(mean_pred - sd_pred, mean_pred, mean_pred + sd_pred),
-      group = unique(data$group),
-      period_type = unique(data$period_type),
-      neuron_type = unique(data$neuron_type),
-      stringsAsFactors = FALSE
-    )
-  } else if (num_vars == 3) {
-    new_data <- expand.grid(
-      mean_predictor = c(mean_pred - sd_pred, mean_pred, mean_pred + sd_pred),
-      group = unique(data$group),
-      period_type = unique(data$period_type),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    stop("num_vars must be either 3 or 4.")
-  }
+  # Properly name the power variable in the prediction data
+  names(pred_data)[names(pred_data) == "iv"] <- continuous_predictor
   
-  # Add continuous predictor to new data frame
-  new_data[[continuous_predictor]] <- new_data$mean_predictor
+  pred_data$predicted <- predict(model, newdata = pred_data, re.form = NA)
   
-  # Ensure new_data has all required variables
-  model_vars <- all.vars(formula(model))
-  for (var in model_vars) {
-    if (!var %in% names(new_data) && var %in% names(data)) {
-      new_data[[var]] <- mean(data[[var]], na.rm = TRUE)
-    }
-  }
-  
-  # Drop 'animal' if it exists in the final data set
-  new_data$animal <- NULL
-  new_data$unit <- NULL
-  
-  # Make predictions
-  new_data$predicted <- predict(model, newdata = new_data, re.form = NA)
-  
-  return(new_data)
+  return(pred_data)
 }
 
 

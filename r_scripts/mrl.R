@@ -12,18 +12,16 @@ library(rlang)
 library(readr)
 
 
-csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/mrl'
-csv_name = 'thousand_ms_mrl_thetas_1_and_2.csv'
+csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/power'
+csv_name = 'mrl_power.csv'
 csv_file = paste(csv_dir, csv_name, sep='/')
 df <- read.csv(csv_file, comment.char="#") 
 df <- subset(df, neuron_quality != '3')
 
 
 
-prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
+prepare_df <- function(csv_file, frequency_band, brain_region, evoked=FALSE){
  
-  csv_name = 'thousand_ms_mrl_thetas_1_and_2.csv'
-  csv_file = paste(csv_dir, csv_name, sep='/')
   df <- read.csv(csv_file, comment.char="#") 
   
   df <- subset(df, neuron_quality != '3')
@@ -32,6 +30,8 @@ prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
   # Convert variables to factors
   factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit')
   df[factor_vars] <- lapply(df[factor_vars], factor)
+  
+  
   
   # Convert frequency_band to a symbol for tidy evaluation
   mrl_column <- sym(paste0(brain_region, '_', frequency_band, "_mrl"))
@@ -49,14 +49,16 @@ prepare_df <- function(frequency_band, brain_region, evoked=FALSE){
 }
 
 
-analyze_data <- function(frequency_band, brain_region) {
-  data = prepare_df(frequency_band, brain_region)
+analyze_data <- function(csv_file, frequency_band, brain_region) {
+  data = prepare_df(csv_file, frequency_band, brain_region)
   formula = 'mean_mrl ~ group*neuron_type*period_type + (1|animal/unit)'
   print(brain_region)
   print(frequency_band)
   print(formula)
   model = lmer(formula=formula, data=data)
-  plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE)
+  plot = emmip(model, group ~ period_type | neuron_type, CIs = FALSE) + 
+    labs(y = paste("Predicted", toupper(brain_region), frequency_band, "MRL")) +
+    scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
   return(list(model = model, plot = plot, data=data))
 }
 
@@ -97,7 +99,7 @@ bootstrap_model <- function(fit, nsim=1000) {
 
 ### Theta 1 ###
 
-pl_theta_1_result = analyze_data('theta_1', 'pl')
+pl_theta_1_result = analyze_data(csv_file, 'theta_1', 'pl')
 summary(pl_theta_1_result$model)
 pl_theta_1_result$plot
 pl_theta_1_bootstrap = bootstrap_model(pl_theta_1_result$model)
@@ -105,7 +107,7 @@ pl_theta_1_bootstrap = bootstrap_model(pl_theta_1_result$model)
 
 ### Theta 2 ###
 
-pl_theta_2_result = analyze_data('theta_2', 'pl')
+pl_theta_2_result = analyze_data(csv_file, 'theta_2', 'pl')
 summary(pl_theta_2_result$model)
 pl_theta_2_result$plot
 pl_theta_2_bootstrap = bootstrap_model(pl_theta_2_result$model)
@@ -116,7 +118,7 @@ pl_theta_2_bootstrap = bootstrap_model(pl_theta_2_result$model)
 
 ### Theta 1 ###
 
-hpc_theta_1_result = analyze_data('theta_1', 'hpc')
+hpc_theta_1_result = analyze_data(csv_file, 'theta_1', 'hpc')
 summary(hpc_theta_1_result$model)
 hpc_theta_1_result$plot
 hpc_theta_1_bootstrap = bootstrap_model(hpc_theta_1_result$model)
@@ -125,7 +127,7 @@ hpc_theta_1_bootstrap = bootstrap_model(hpc_theta_1_result$model)
 
 ### Theta 2 ###
 
-hpc_theta_2_result = analyze_data('theta_2', 'hpc')
+hpc_theta_2_result = analyze_data(csv_file, 'theta_2', 'hpc')
 summary(hpc_theta_2_result$model)
 hpc_theta_2_result$plot
 hpc_theta_2_bootstrap = bootstrap_model(hpc_theta_2_result$model)
@@ -138,7 +140,7 @@ hpc_theta_2_bootstrap = bootstrap_model(hpc_theta_2_result$model)
 
 ### Theta 1 ###
 
-bla_theta_1_result = analyze_data('theta_1', 'bla')
+bla_theta_1_result = analyze_data(csv_file, 'theta_1', 'bla')
 summary(bla_theta_1_result$model)
 bla_theta_1_result$plot
 bla_theta_1_bootstrap = bootstrap_model(bla_theta_1_result$model)
@@ -147,7 +149,7 @@ bla_theta_1_bootstrap = bootstrap_model(bla_theta_1_result$model)
 
 ### Theta 2 ###
 
-bla_theta_2_result = analyze_data('theta_2', 'bla')
+bla_theta_2_result = analyze_data(csv_file, 'theta_2', 'bla')
 summary(bla_theta_2_result$model)
 bla_theta_2_result$plot
 bla_theta_2_bootstrap = bootstrap_model(bla_theta_2_result$model)

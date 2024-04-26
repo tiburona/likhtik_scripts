@@ -13,9 +13,9 @@ library(rlang)
 library(readr)
 
 
-csv_dir = '/Users/katie/likhtik/data/lfp/psth'
+csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/mrl'
 
-csv_name = 'mrl_pl_theta_1_mrl_pl_theta_2_mrl_bla_theta_1_mrl_bla_theta_2_mrl_hpc_theta_1_mrl_hpc_theta_2_psth_rsGlX0.csv'
+csv_name = 'psth_mrl.csv'
 
 csv_file = paste(csv_dir, csv_name, sep='/')
 df <- read.csv(csv_file, comment.char="#") 

@@ -6,24 +6,11 @@ library(lmerTest)
 library(sjPlot)
 library(ggplot2)
 library(emmeans)
+library(purrr)
 
 
-power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'psth_power.csv', sep='/')
+power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'mrl_power.csv', sep='/')
 power_df <- read.csv(power_csv, comment.char="#") 
-
-
-# Path to your CSV file
-# file_path <- paste('/Users/katie/likhtik/IG_INED_Safety_Recall/mrl', 'omnibus_spreadsheet.csv', sep='/')
-
-# Read all lines from the file
-# all_lines <- readLines(file_path)
-
-# Filter lines that start with '#'
-# comment_lines <- grep("^#", all_lines, value = TRUE)
-
-# Print the comment lines
-# print(comment_lines)
-
 
 factor_vars <- c('animal', 'group', 'period_type')
 power_df[factor_vars] <- lapply(power_df[factor_vars], factor)
@@ -168,3 +155,65 @@ graphs <- hpc_theta_2_results$Graphs
 graphs$graph_with_bin_all
 
 
+
+run_power_power_analysis <- function(data, region1, frequency_band1, region2, frequency_band2) {
+  
+  # Dynamically build the variable names based on region and frequency
+  power_var1 <- paste(region1, frequency_band1, "power", sep = "_")
+  power_var2 <- paste(region2, frequency_band2, "power", sep = "_")
+  
+  # Filter out rows where the power variable is NA
+  clean_data <- data[!is.na(data[[power_var1]]) & !is.na(data[[power_var2]]), ]
+  
+  power_vars = c(power_var1, power_var2)
+  
+  # Define control parameters for the linear mixed-effects model
+  control = lmerControl(check.conv.grad=.makeCC("warning", tol=1e-4), optimizer="bobyqa")
+  
+  # Build the formula string dynamically
+  formula <- as.formula(paste(power_var2, " ~ group*period_type*", power_var1,
+                              "+ (1|animal/period)", sep = ""))
+  
+  # Fit the model
+  model <- lmer(formula, data = clean_data, control = control)
+  
+  # Display the summary of the model
+  print(summary(model))
+  
+  # Calculate mean and standard deviation for the power variable
+  mean_power <- mean(data[[power_var1]], na.rm = TRUE)
+  sd_power <- sd(data[[power_var1]], na.rm = TRUE)
+  
+  pred_data <- expand.grid(
+    group = levels(clean_data$group),
+    period_type = levels(clean_data$period_type),
+    power = c(mean_power - sd_power, mean_power, mean_power + sd_power)
+  )
+  
+  # Properly name the power variable in the prediction data
+  names(pred_data)[names(pred_data) == "power"] <- power_var1
+  
+  pred_data[[paste('predicted', power_var2, sep='_')]] <- predict(model, newdata = pred_data, re.form = NA)
+  
+  # Plot the predictions
+  p <- graph_predictions(data=pred_data, 
+                         x=power_var1, y=paste('predicted', power_var2, sep='_'), 
+                         xlabel=paste(toupper(region1), frequency_band1, "power", sep = " "), 
+                         ylabel=paste('Predicted', power_var2, sep=" "), num_vars = 3)
+  
+  # Return both the model and the plot
+  return(list(model = model, plot = p))
+}
+
+grouped_df = group_and_summarize(power_df, c("period", "group", "period_type", "animal", "event"))
+result <- run_power_power_analysis(grouped_df, 'bla', 'theta_1', 'pl', 'theta_1')
+
+
+result$plot
+
+
+grouped_df = group_and_summarize(power_df, c("period", "group", "period_type", "animal", "event"))
+result <- run_power_power_analysis(grouped_df, 'hpc', 'theta_2', 'pl', 'theta_2')
+
+
+result$plot

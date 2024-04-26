@@ -8,7 +8,7 @@ library(ggplot2)
 library(emmeans)
 library(ggplot2)
 
-run_analysis <- function(data, region, frequency_band) {
+run_rate_power_analysis <- function(data, region, frequency_band) {
   # Dynamically build the variable names based on region and frequency
   power_var <- paste(region, frequency_band, "power", sep = "_")
   
@@ -29,13 +29,13 @@ run_analysis <- function(data, region, frequency_band) {
   print(summary(model))
   
   # Calculate mean and standard deviation for the power variable
-  mean_power <- mean(data[[power_var]], na.rm = TRUE)
-  sd_power <- sd(data[[power_var]], na.rm = TRUE)
+  mean_power <- mean(clean_data[[power_var]], na.rm = TRUE)
+  sd_power <- sd(clean_data[[power_var]], na.rm = TRUE)
   
   pred_data <- expand.grid(
-    group = levels(data$group),
-    period_type = levels(data$period_type),
-    neuron_type = levels(data$neuron_type),
+    group = levels(clean_data$group),
+    period_type = levels(clean_data$period_type),
+    neuron_type = levels(clean_data$neuron_type),
     power = c(mean_power - sd_power, mean_power, mean_power + sd_power)
   )
   
@@ -102,37 +102,37 @@ data_with_rate <- data %>%
 
 ### BLA THETA 1 ###
 
-results <- run_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_1")
+results <- run_rate_power_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_1")
 print(results$plot)
 
 
 ### BLA THETA 2 ###
 
-results <- run_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_2")
+results <- run_rate_power_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_2")
 print(results$plot)
 
 
 ### PL THETA 1 ###
 
-results <- run_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_1")
+results <- run_rate_power_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_1")
 print(results$plot)
 
 
 ### PL THETA 2 ###
 
-results <- run_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_2")
+results <- run_rate_power_analysis(data = data_with_rate, region = "pl", frequency_band = "theta_2")
 print(results$plot)
 
 
 ### HPC THETA 1 ###
 
-results <- run_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_1")
+results <- run_rate_power_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_1")
 print(results$plot)
 
 
 ### HPC THETA 2 ###
 
-results <- run_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_2")
+results <- run_rate_power_analysis(data = data_with_rate, region = "hpc", frequency_band = "theta_2")
 print(results$plot)
 
 
