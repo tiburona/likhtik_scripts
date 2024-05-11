@@ -14,9 +14,10 @@ read_metadata <- function(csv_file) {
 
 create_predictions_data <- function(data, model, continuous_predictor) {
   
+  clean_data <- subset(data, !is.na(data[[continuous_predictor]]))
   
-  mean_iv <- mean(data[[continuous_predictor]], na.rm = TRUE)
-  sd_iv <- sd(data[[continuous_predictor]], na.rm = TRUE)
+  mean_iv <- mean(clean_data[[continuous_predictor]], na.rm = TRUE)
+  sd_iv <- sd(clean_data[[continuous_predictor]], na.rm = TRUE)
   
   pred_data <- expand.grid(
     group = levels(clean_data$group),
