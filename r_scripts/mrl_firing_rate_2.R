@@ -7,7 +7,7 @@ library(lmerTest)
 
 
 
-
+control = lmerControl(check.conv.grad=.makeCC("warning", tol=1e-4), optimizer="bobyqa")
 csv_dir = '/Users/katie/likhtik/IG_INED_Safety_Recall/mrl'
 
 csv_name = 'psth_mrl.csv'
@@ -18,13 +18,13 @@ mrl_rate_df <- read.csv(csv_file, comment.char="#")
 
 read_metadata(csv_file)
 
-mrl_rate_df$neuron_type <- factor(data$neuron_type,
+mrl_rate_df$neuron_type <- factor(mrl_rate_data$neuron_type,
                            levels = c("IN", "PN"))
-mrl_rate_df <- mrl_rate_df[!is.na(data[['neuron_type']]), ]
+mrl_rate_df <- mrl_rate_df[!is.na(mrl_rate_data[['neuron_type']]), ]
 
 
 factor_vars <- c('animal', 'group', 'period_type', 'unit')
-mrl_rate_df[factor_vars] <- lapply(data[factor_vars], factor)
+mrl_rate_df[factor_vars] <- lapply(mrl_rate_data[factor_vars], factor)
 
 mrl_rate_data <- mrl_rate_df %>%
   filter(time_bin < 60) %>%
