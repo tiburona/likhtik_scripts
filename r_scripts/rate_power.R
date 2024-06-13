@@ -105,6 +105,9 @@ data_with_rate <- data %>%
 results <- run_rate_power_analysis(data = data_with_rate, region = "bla", frequency_band = "theta_1")
 print(results$plot)
 
+qqnorm(resid(results$model))
+qqline(resid(results$model), col = "red")
+
 
 ### BLA THETA 2 ###
 

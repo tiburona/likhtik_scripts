@@ -42,19 +42,23 @@ graph_predictions <- function(data, x, y, xlabel, ylabel, num_vars=4) {
   # Sort data by x
   data <- data[order(data[[x]]), ]
   
+  # Checking unique period_type values for troubleshooting
+  print(unique(data$period_type))
   p <- ggplot(data, aes_string(x = x, y = y, color = "period_type")) +
-    geom_line() +
-    labs(x = xlabel, y = ylabel) +
-    theme_bw()
-  
-  if (num_vars == 4) {
-    p <- p + facet_grid("neuron_type ~ group", scales = "free")
-  } else {
-    p <- p + facet_grid(". ~ group", scales = "free")
-  }
-  
-  return(p)
+      geom_line() + labs(x = xlabel, y = ylabel) + theme_bw() +
+      scale_color_manual(values = c("tone" = "green", "pretone" = "pink"))  # Ensure values match those printed
+               
+               # Modify facets based on number of variables
+               if (num_vars == 4) {
+                 p <- p + facet_grid("neuron_type ~ group", scales = "free")
+               } else {
+                 p <- p + facet_grid(". ~ group", scales = "free")
+               }
+               
+               return(p)
 }
+
+
 
 
 
