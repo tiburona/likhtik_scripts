@@ -268,6 +268,48 @@ model <- glmmTMB(count ~ time_bin + count_lag1 + group * period_type * neuron_ty
                  na.action = na.exclude,
                  control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
 
+
+# Calculate mean and standard deviation for the power variable
+mean_power <- mean(continuous_data[['pl_theta_1_power']], na.rm = TRUE)
+sd_power <- sd(continuous_data[['pl_theta_1_power']], na.rm = TRUE)
+
+# First, create a unique identifier in your training data for existing combinations
+continuous_data$combo <- with(continuous_data, paste(animal, unit, period, sep = "_"))
+
+# Generate prediction data grid
+pred_data <- expand.grid(
+  group = levels(continuous_data$group),
+  period_type = levels(continuous_data$period_type),
+  neuron_type = levels(continuous_data$neuron_type),
+  power = c(mean_power - sd_power, mean_power, mean_power + sd_power),
+  animal = unique(continuous_data$animal),
+  unit = unique(continuous_data$unit),
+  period = unique(continuous_data$period)
+  time_bin = unique(continuous_data)
+)
+
+# Create a combo identifier in the prediction data
+pred_data$combo <- with(pred_data, paste(animal, unit, period, sep = "_"))
+
+# Filter pred_data to only include combinations that exist in clean_data
+pred_data <- pred_data[pred_data$combo %in% continuous_data$combo,]
+
+# Properly name the power variable in the prediction data
+names(pred_data)[names(pred_data) == "power"] <- 'pl_theta_1_power'
+
+# Proceed with predictions
+pred_data$predicted_counts <- predict(model, newdata = pred_data, re.form = NA,
+                                      type = 'response')
+
+# Plot the predictions
+p <- graph_predictions(
+  data=pred_data, x='pl_theta_1_power', y='predicted_counts', 
+  xlabel= "pl theta 1 power",
+  ylabel= labs(y = "Predicted Count of Spikes per Event (0-.3s)")) 
+
+
+
+
 resid <- residuals(model, type = "response")
 plot(resid, main = "Residuals Plot")
 
