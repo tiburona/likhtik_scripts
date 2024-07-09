@@ -11,7 +11,7 @@ library(lmerTest)
 max_correlation_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/correlation', 'lag_of_max_correlation.csv', sep='/')
 max_corr_data <- read.csv(max_correlation_csv, comment.char="#") 
 factor_vars <- c('animal', 'group', 'period_type')
-data[factor_vars] <- lapply(max_corr_data[factor_vars], factor)
+max_corr_data[factor_vars] <- lapply(max_corr_data[factor_vars], factor)
 
 average_max_corr_data <- max_corr_data %>% 
   group_by(group, period_type, animal) %>%
@@ -57,17 +57,14 @@ factor_vars <- c('animal', 'group', 'period_type', 'correlation_calculator')
 corr_data[factor_vars] <- lapply(corr_data[factor_vars], factor)
 corr_data$time_squared <- corr_data$time^2
 
-model <- lmer(bla_pl_theta_1_correlation ~ time_squared + time* group * period_type + (1|animal), data = corr_data)
-summary(model)
+model_glmmTMB <- glmmTMB(bla_pl_theta_1_correlation ~ time_squared + time* group * period_type + (1|animal), data = corr_data)
 
+summary(model_glmmTMB)
 
-
-
-
-
+simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
 # Generate the emmip plot
-emmip_plot <- emmip(model, period_type ~ time | group, 
+emmip_plot <- emmip(model_glmmTMB, period_type ~ time | group, 
                     at = list(time = c(-.1, -.05, 0, .05, .1)),
                     aes(color = period_type))  # Using aes to map color
 

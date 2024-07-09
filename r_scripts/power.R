@@ -7,19 +7,15 @@ library(sjPlot)
 library(ggplot2)
 library(emmeans)
 library(purrr)
+library(MASS)
+library(forecast)
 
-
-power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', 'mrl_power.csv', sep='/')
+csv_name = 'power_sep_freqs.csv'
+power_csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/power', csv_name, sep='/')
 power_df <- read.csv(power_csv, comment.char="#") 
 
 factor_vars <- c('animal', 'group', 'period_type')
 power_df[factor_vars] <- lapply(power_df[factor_vars], factor)
-# 
-# prepip_df <- power_df %>%
-#   filter(time_bin < 15)
-# 
-# postpip_df <- power_df %>%
-#   filter(time_bin > 14 & time_bin < 45)
 
 
 group_and_summarize <- function(df, group_vars) {
@@ -42,178 +38,92 @@ group_and_summarize <- function(df, group_vars) {
     )
 }
 
-data_frames <- list(
-  all = power_df
-  #prepip = prepip_df,
-  #postpip = postpip_df
-)
 
-make_models_and_graphs <- function(brain_region, frequency_band, data_framees) {
-  
-  # Create the column name dynamically based on function inputs
-  power_col_name <- paste(brain_region, frequency_band, "power", sep="_")
-  
-  
-  # Prepare lists to store models and graphs
-  models_list <- list()
-  graphs_list <- list()
-  
-  # Iterate over the list of data frames with names
-  for (df_name in names(data_frames)) {
-    df <- data_frames[[df_name]]
-    
-    # Summarize data including 'time_bin'
-    with_time_bin <- group_and_summarize(
-      df, c("period", "group", "period_type", "animal", "event", "time_bin"))
-    
-    # Fit model using the dynamically specified power column
-    model_with_bin <- lmer(
-      as.formula(paste(power_col_name, "~ group * period_type + (1|animal/period/event)")), 
-      data=with_time_bin)
-    
-    # Store model and print summary with title
-    models_list[[paste("model_with_bin_", df_name, sep='')]] <- model_with_bin
-    cat("\nSummary of Model with Time Bin (", df_name, "):\n", sep='')
-    print(summary(model_with_bin))
-    
-    # Summarize data without 'time_bin'
-    without_time_bin <- group_and_summarize(
-      df, c("period", "group", "period_type", "animal", "event"))
-    
-    # Fit model for the data without 'time_bin'
-    model_without_bin <- lmer(
-      as.formula(paste(power_col_name, "~ group * period_type + (1|animal/period)")), 
-      data=without_time_bin)
-    
-    # Store model and print summary with title
-    models_list[[paste("model_without_bin_", df_name, sep='')]] <- model_without_bin
-    cat("\nSummary of Model without Time Bin (", df_name, "):\n", sep='')
-    print(summary(model_without_bin))
-    
-    # Generate graphs for each model
-    plot_with_bin <- emmip(model_with_bin, group ~ period_type, CIs = FALSE) + 
-      labs(y = paste("Predicted", toupper(brain_region), toupper(frequency_band), "Power")) +
-      scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
-    
-    plot_without_bin <- emmip(model_without_bin, group ~ period_type, CIs = FALSE) + 
-      labs(y = paste("Predicted", toupper(brain_region), toupper(frequency_band), "Power")) +
-      scale_color_manual(values = c("control" = "green", "defeat" = "orange"))
-    
-    # Store graphs with descriptive keys
-    graphs_list[[paste("graph_with_bin_", df_name, sep='')]] <- plot_with_bin
-    graphs_list[[paste("graph_without_bin_", df_name, sep='')]] <- plot_without_bin
-  }
-  
-  # Return a list containing all models and graphs
-  return(list("Models" = models_list, "Graphs" = graphs_list))
-}
 
+grouped_df = group_and_summarize(power_df, c("period", "group", "period_type", "animal", "event"))
 
 ### Models ####
 
+# BLA #
 
-bla_theta_1_results <- make_models_and_graphs('bla', 'theta_1')
+df_cleaned <- grouped_df %>% filter(!is.na(bla_theta_1_power))
+df_cleaned$log_bla_theta_1_power <- log(df_cleaned$bla_theta_1_power)
+bla_theta_1_model <-  lmer(log_bla_theta_1_power ~ group * period_type + (1|animal/period), data <- df_cleaned)
 
-graphs <- bla_theta_1_results$Graphs
+summary(bla_theta_1_model)
 
-graphs$graph_with_bin_all
+residuals <- resid(bla_theta_1_model)
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
 
-bla_theta_2_results <- make_models_and_graphs('bla', 'theta_2')
+plot(residuals ~ fitted(bla_theta_1_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
 
-graphs <- bla_theta_2_results$Graphs
+hist(residuals, main = "Histogram of Residuals")
 
+pdf("/Users/katie/likhtik/IG_INED_Safety_Recall/power/bla_theta_1_model.pdf", width = 5, height = 7) 
 
-graphs$graph_with_bin_all
+emmip(bla_theta_1_model, group ~ period_type, CIs = FALSE) + 
+  labs(x = '', y = paste("Predicted Ln BLA Theta 1 Power")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
-
-pl_theta_1_results <- make_models_and_graphs('pl', 'theta_1')
-
-graphs <- pl_theta_1_results$Graphs
-
-graphs$graph_with_bin_prepip
-graphs$graph_with_bin_postpip
-graphs$graph_with_bin_all
-
-bla_theta_2_results <- make_models_and_graphs('bla', 'theta_2')
-
-graphs <- bla_theta_2_results$Graphs
-
-graphs$graph_with_bin_prepip
-graphs$graph_with_bin_postpip
-graphs$graph_with_bin_all
-
-hpc_theta_1_results <- make_models_and_graphs('hpc', 'theta_1')
-
-graphs <- hpc_theta_1_results$Graphs
-
-graphs$graph_with_bin_all
+# Close the device
+dev.off()
 
 
-hpc_theta_2_results <- make_models_and_graphs('hpc', 'theta_2')
-graphs <- hpc_theta_2_results$Graphs
+# PL #
 
-graphs$graph_with_bin_all
+df_cleaned <- grouped_df %>% filter(!is.na(pl_theta_1_power))
+df_cleaned$log_pl_theta_1_power <- log(df_cleaned$pl_theta_1_power)
+pl_theta_1_model <-  lmer(log_pl_theta_1_power ~ group * period_type + (1|animal/period), data <- df_cleaned)
 
+summary(pl_theta_1_model)
 
+residuals <- resid(pl_theta_1_model)
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
 
-run_power_power_analysis <- function(data, region1, frequency_band1, region2, frequency_band2) {
-  
-  # Dynamically build the variable names based on region and frequency
-  power_var1 <- paste(region1, frequency_band1, "power", sep = "_")
-  power_var2 <- paste(region2, frequency_band2, "power", sep = "_")
-  
-  # Filter out rows where the power variable is NA
-  clean_data <- data[!is.na(data[[power_var1]]) & !is.na(data[[power_var2]]), ]
-  
-  power_vars = c(power_var1, power_var2)
-  
-  # Define control parameters for the linear mixed-effects model
-  control = lmerControl(check.conv.grad=.makeCC("warning", tol=1e-4), optimizer="bobyqa")
-  
-  # Build the formula string dynamically
-  formula <- as.formula(paste(power_var2, " ~ group*period_type*", power_var1,
-                              "+ (1|animal/period)", sep = ""))
-  
-  # Fit the model
-  model <- lmer(formula, data = clean_data, control = control)
-  
-  # Display the summary of the model
-  print(summary(model))
-  
-  # Calculate mean and standard deviation for the power variable
-  mean_power <- mean(data[[power_var1]], na.rm = TRUE)
-  sd_power <- sd(data[[power_var1]], na.rm = TRUE)
-  
-  pred_data <- expand.grid(
-    group = levels(clean_data$group),
-    period_type = levels(clean_data$period_type),
-    power = c(mean_power - sd_power, mean_power, mean_power + sd_power)
-  )
-  
-  # Properly name the power variable in the prediction data
-  names(pred_data)[names(pred_data) == "power"] <- power_var1
-  
-  pred_data[[paste('predicted', power_var2, sep='_')]] <- predict(model, newdata = pred_data, re.form = NA)
-  
-  # Plot the predictions
-  p <- graph_predictions(data=pred_data, 
-                         x=power_var1, y=paste('predicted', power_var2, sep='_'), 
-                         xlabel=paste(toupper(region1), frequency_band1, "power", sep = " "), 
-                         ylabel=paste('Predicted', power_var2, sep=" "), num_vars = 3)
-  
-  # Return both the model and the plot
-  return(list(model = model, plot = p))
-}
+plot(residuals ~ fitted(pl_theta_1_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
 
-grouped_df = group_and_summarize(power_df, c("period", "group", "period_type", "animal", "event"))
-result <- run_power_power_analysis(grouped_df, 'bla', 'theta_1', 'pl', 'theta_1')
+hist(residuals, main = "Histogram of Residuals")
+
+pdf("/Users/katie/likhtik/IG_INED_Safety_Recall/power/pl_theta_1_model.pdf", width = 5, height = 7) 
+
+emmip(bla_theta_1_model, group ~ period_type, CIs = FALSE) + 
+  labs(x = '', y = paste("Predicted Ln PL Theta 1 Power")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+# Close the device
+dev.off()
 
 
-result$plot
+# HPC #
 
 
-grouped_df = group_and_summarize(power_df, c("period", "group", "period_type", "animal", "event"))
-result <- run_power_power_analysis(grouped_df, 'hpc', 'theta_2', 'pl', 'theta_2')
+df_cleaned <- grouped_df %>% filter(!is.na(hpc_theta_1_power))
+df_cleaned$log_hpc_theta_1_power <- log(df_cleaned$hpc_theta_1_power)
+hpc_theta_1_model <-  lmer(log_hpc_theta_1_power ~ group * period_type + (1|animal/period), data <- df_cleaned)
+
+summary(hpc_theta_1_model)
+
+residuals <- resid(hpc_theta_1_model)
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+
+plot(residuals ~ fitted(hpc_theta_1_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+hist(residuals, main = "Histogram of Residuals")
+
+pdf("/Users/katie/likhtik/IG_INED_Safety_Recall/power/hpc_theta_1_model.pdf", width = 5, height = 7) 
+
+emmip(hpc_theta_1_model, group ~ period_type, CIs = FALSE) + 
+  labs(x = '', y = paste("Predicted Ln HPC Theta 1 Power")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+# Close the device
+dev.off()
 
 
-result$plot
+

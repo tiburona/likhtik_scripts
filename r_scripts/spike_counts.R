@@ -14,6 +14,7 @@ count_data <-
 
 
 count_data <- subset(count_data, count_data$time_bin < 30)
+count_data <- subset(count_data, neuron_quality != '3')
 
 count_data <- count_data %>%
   group_by(group, neuron_type, period_type, animal, unit, period, event) %>%
@@ -37,8 +38,8 @@ emm_results = emmeans(count_data_model_poisson, specs = pairwise ~ group | perio
 emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
 
 count_data_plot <- emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type = "response") +
-  labs(y = "Predicted Count of Spikes per Event (0-.3s)") +
-  scale_color_manual(values = c("control" = "purple", "defeat" = "orange"))
+  labs(x="", y = "Predicted Count of Spikes per Event (0-.3s)") +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 print(count_data_plot)
 
