@@ -9,12 +9,12 @@ library(glmmTMB)
 
 # Load the CSV file
 count_data <- 
-  read.csv('/Users/katie/likhtik/IG_INED_Safety_Recall/spike_counts/count_spreadsheet.csv', 
+  read.csv('/Users/katie/likhtik/IG_INED_Safety_Recall/spike_counts/spike_counts.csv', 
            comment.char="#")
 
 
-count_data <- subset(count_data, count_data$time_bin < 30)
-count_data <- subset(count_data, neuron_quality != '3')
+count_data <- subset(count_data, count_data$time <= .3)
+count_data <- subset(count_data, quality != '3')
 
 count_data <- count_data %>%
   group_by(group, neuron_type, period_type, animal, unit, period, event) %>%
@@ -54,13 +54,22 @@ predictions <- predict(count_data_model_poisson, type = "response")
 summary(predictions)
 
 
-# I experimented with a zero-inflated model but decided Poisson was good enough.
 
 zip_model <- glmmTMB(count ~ group * period_type * neuron_type + (1|animal:unit) + (1|animal:unit:period),
                      ziformula = ~ 1,  # Zero-inflation part
                      family = poisson(link = "log"),
                      data = count_data)
 summary(zip_model)
+
+
+emm_results = emmeans(count_data_model_poisson, specs = pairwise ~ group | period_type | neuron_type)
+emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
+
+count_data_plot <- emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type = "response") +
+  labs(x="", y = "Predicted Count of Spikes per Event (0-.3s)") +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+print(count_data_plot)
 
 AIC(zip_model)
 AIC(count_data_model_poisson)  # 
@@ -84,40 +93,40 @@ testDispersion(simulated_res_zip)
 
 count_data_IN_tone = subset(count_data, count_data$neuron_type=='IN' & count_data$period_type=='tone')
 
-IN_tone_model_poisson <- glmer(count ~ group + 
-                                    (1|animal/unit/period), 
-                                  family = poisson(link = "log"), 
-                                  data = count_data_IN_tone)
+IN_tone_model_poisson <- glmmTMB(count ~ group + (1|animal:unit) + (1|animal:unit:period),
+                                 ziformula = ~ 1,  # Zero-inflation part
+                                 family = poisson(link = "log"),
+                                 data = count_data_IN_tone)
 
 summary(IN_tone_model_poisson)
 
 
 count_data_IN_pretone = subset(count_data, count_data$neuron_type=='IN' & count_data$period_type=='pretone')
 
-IN_pretone_model_poisson <- glmer(count ~ group + 
-                                 (1|animal/unit/period), 
-                               family = poisson(link = "log"), 
-                               data = count_data_IN_pretone)
-
+IN_pretone_model_poisson <- glmmTMB(count ~ group + (1|animal:unit) + (1|animal:unit:period),
+                                    ziformula = ~ 1,  # Zero-inflation part
+                                    family = poisson(link = "log"),
+                                    data = count_data_IN_pretone)
 summary(IN_pretone_model_poisson)
 
 
 count_data_PN_tone = subset(count_data, count_data$neuron_type=='PN' & count_data$period_type=='tone')
 
-PN_tone_model_poisson <- glmer(count ~ group + 
-                                 (1|animal:unit) + (1|animal:unit:period), 
-                               family = poisson(link = "log"), 
-                               data = count_data_PN_tone)
+PN_tone_model_poisson <- glmmTMB(count ~ group + (1|animal:unit) + (1|animal:unit:period),
+                                 ziformula = ~ 1,  # Zero-inflation part
+                                 family = poisson(link = "log"),
+                                 data = count_data_PN_tone)
 
 summary(PN_tone_model_poisson)
 
 
 count_data_PN_pretone = subset(count_data, count_data$neuron_type=='PN' & count_data$period_type=='pretone')
 
-PN_pretone_model_poisson <- glmer(count ~ group + 
-                                    (1|animal:unit) + (1|animal:unit:period), 
-                                  family = poisson(link = "log"), 
-                                  data = count_data_PN_pretone)
+PN_pretone_model_poisson <- glmmTMB(count ~ group + (1|animal:unit) + (1|animal:unit:period),
+                                    ziformula = ~ 1,  # Zero-inflation part
+                                    family = poisson(link = "log"),
+                                    data = count_data_PN_pretone)
+
 
 summary(PN_pretone_model_poisson)
 

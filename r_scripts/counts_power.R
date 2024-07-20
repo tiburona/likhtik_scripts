@@ -8,6 +8,10 @@ library(ggplot2)
 library(emmeans)
 library(DHARMa)
 library(boot)
+library(purrr)
+library(forcats)
+library(caret)
+
 
 
 
@@ -18,7 +22,7 @@ plot_aggregated_data <- function(data, x, y, xlabel, ylabel, factors=c("neuron_t
   data <- subset(data, !is.na(data[[x]]))
   
   data <- data %>%
-    mutate(bin = ntile(get(x), 10))  # Creating 10 bins
+    mutate(time_bin = ntile(get(x), 10))  # Creating 10 bins
   
   if ("period_type" %in% factors && "period_type" %in% names(data)) {
     data$period_type <- factor(data$period_type, levels = c("tone", "pretone"))
@@ -27,7 +31,7 @@ plot_aggregated_data <- function(data, x, y, xlabel, ylabel, factors=c("neuron_t
  
   
   # Dynamically construct the grouping variables
-  grouping_vars <- c("bin", "animal", "unit", "period", factors)
+  grouping_vars <- c("time_bin", "animal", "unit", "period", factors)
   
   # Compute averages at each level
   data <- data %>%
@@ -65,7 +69,7 @@ plot_aggregated_data <- function(data, x, y, xlabel, ylabel, factors=c("neuron_t
   # Create the plot using the correct interaction column
   color_var <- if("period_type" %in% factors) "period_type" else "group"
   # Create the plot
-  p <- ggplot(data, aes(x = as.factor(bin), y = mean_y_group, color = color_for_period_type, group = interaction_column)) +
+  p <- ggplot(data, aes(x = as.factor(time_bin), y = mean_y_group, color = color_for_period_type, group = interaction_column)) +
     geom_line() +
     labs(x = xlabel, y = ylabel) +
     scale_color_manual(values = colors) +
@@ -79,101 +83,15 @@ plot_aggregated_data <- function(data, x, y, xlabel, ylabel, factors=c("neuron_t
 
 
 
-create_predictions_data_no_nt <- function(data, model, continuous_predictor) {
-  
-  
-  mean_iv <- mean(data[[continuous_predictor]], na.rm = TRUE)
-  sd_iv <- sd(data[[continuous_predictor]], na.rm = TRUE)
-  
-  pred_data <- expand.grid(
-    group = levels(clean_data$group),
-    period_type = levels(clean_data$period_type),
-    iv = c(mean_iv - sd_iv, mean_iv, mean_iv + sd_iv)
-  )
-  
-  # Properly name the power variable in the prediction data
-  names(pred_data)[names(pred_data) == "iv"] <- continuous_predictor
-  
-  pred_data$predicted <- predict(model, newdata = pred_data, re.form = NA)
-  
-  return(pred_data)
-}
-
-
-run_count_power_analysis <- function(data, region, frequency_band) {
-  # Dynamically build the variable names based on region and frequency
-  power_var <- paste(region, frequency_band, "power", sep = "_")
-  
-  # Filter out rows where the power variable is NA
-  clean_data <- data[!is.na(data[[power_var]]), ]
-  
-  # Build the formula string dynamically
-  formula <- as.formula(
-    paste("count ~ group*period_type*neuron_type*", power_var,
-    "+ (1|animal:unit) + (1|animal:unit:period)", sep = ""))
-
-  model <- glmmTMB(formula, ziformula = ~ 1,family = nbinom1, data = clean_data)
-  
-  disp_stat <- sum(residuals(model, type = "pearson")^2) / df.residual(model)
-  print(paste("Dispersion statistic: ", disp_stat))
-  
-  plot(residuals(model) ~ fitted(model))
-  abline(h = 0, col = "red")
-
-  # Display the summary of the model
-  print(summary(model))
-  
-  # Calculate mean and standard deviation for the power variable
-  mean_power <- mean(clean_data[[power_var]], na.rm = TRUE)
-  sd_power <- sd(clean_data[[power_var]], na.rm = TRUE)
-  
-  # First, create a unique identifier in your training data for existing combinations
-  clean_data$combo <- with(clean_data, paste(animal, unit, period, sep = "_"))
-  
-  # Generate prediction data grid
-  pred_data <- expand.grid(
-    group = levels(clean_data$group),
-    period_type = levels(clean_data$period_type),
-    neuron_type = levels(clean_data$neuron_type),
-    power = c(mean_power - sd_power, mean_power, mean_power + sd_power),
-    animal = unique(clean_data$animal),
-    unit = unique(clean_data$unit),
-    period = unique(clean_data$period)
-  )
-  
-  # Create a combo identifier in the prediction data
-  pred_data$combo <- with(pred_data, paste(animal, unit, period, sep = "_"))
-  
-  # Filter pred_data to only include combinations that exist in clean_data
-  pred_data <- pred_data[pred_data$combo %in% clean_data$combo,]
-  
-  # Properly name the power variable in the prediction data
-  names(pred_data)[names(pred_data) == "power"] <- power_var
-  
-  # Proceed with predictions
-  pred_data$predicted_counts <- predict(model, newdata = pred_data, re.form = NA,
-                                        type = 'response')
-  
-  # Plot the predictions
-  p <- graph_predictions(
-    data=pred_data, x=power_var, y='predicted_counts', 
-    xlabel=paste(toupper(region), frequency_band, "power", sep = " "),
-    ylabel= labs(y = "Predicted Count of Spikes per Event (0-.3s)")) 
-
-  # Return both the model and the plot
-  return(list(model = model, plot = p))
-}
-
 
 
 
 ### .3 second periods analyses ###
-
-csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/spike_counts', 'count_power.csv', sep='/')
+  
+csv = paste('/Users/katie/likhtik/IG_INED_Safety_Recall/spike_counts', 'count_power_more_padding.csv', sep='/')
 data <- read.csv(csv, comment.char="#") 
 
 read_metadata(csv)
-
 
 
 factor_vars <- c('animal', 'group', 'period_type', 'neuron_type', 'unit', 'period')
@@ -182,7 +100,6 @@ data[factor_vars] <- lapply(data[factor_vars], factor)
 data$neuron_type <- factor(data$neuron_type,
                            levels = c("IN", "PN"))
 
-na_data <- data[is.na(data$neuron_type), ]
 data <- data[!is.na(data$neuron_type), ]
 
 
@@ -194,9 +111,21 @@ data$bla_theta_2_power <- scale(data$bla_theta_2_power)
 data$pl_theta_2_power  <- scale(data$pl_theta_2_power)
 
 
-data_with_counts <- data %>%
-  filter(time < .3) %>%
-  group_by(period, group, period_type, neuron_type, unit, animal, event) %>%
+
+### PL THETA 1 ###
+
+# Filter out rows where 'unit' is NA before summarizing
+filtered_data <- data %>%
+  filter(time < .3 & !is.na(unit))
+
+
+
+
+
+
+# Proceed with grouping and summarization
+continuous_data <- filtered_data %>%
+  group_by(period, group, period_type, neuron_type, unit, animal, event, time) %>%
   summarise(
     hpc_theta_1_power = mean(hpc_theta_1_power, na.rm = TRUE),
     bla_theta_1_power = mean(bla_theta_1_power, na.rm = TRUE),
@@ -205,107 +134,257 @@ data_with_counts <- data %>%
     bla_theta_2_power = mean(bla_theta_2_power, na.rm = TRUE),
     pl_theta_2_power  = mean(pl_theta_2_power, na.rm = TRUE),
     count = sum(spike_counts, na.rm = TRUE),
-    .groups = "drop"  # This line drops the grouping structure and returns a regular data frame
+    .groups = "drop"
   )
 
+# Check for NA/Nan in the resulting data
+post_na_check <- sum(is.na(continuous_data$unit))
+post_nan_check <- sum(is.nan(continuous_data$unit))
+print(paste("Post-summarisation NA in 'unit':", post_na_check))
+print(paste("Post-summarisation NaN in 'unit':", post_nan_check))
 
-### BLA THETA 1 ###
-
-# clean_data <- data_with_counts[!is.na(data_with_counts[['bla_theta_1_power']]), ]
-# results <- run_count_power_analysis(data = clean_data, region = "bla", frequency_band = "theta_1")
-# print(results$plot)
-# 
-# 
-# ### BLA THETA 2 ###
-# 
-# clean_data <- data_with_counts[!is.na(data_with_counts[['bla_theta_2_power']]), ]
-# results <- run_count_power_analysis(data = clean_data, region = "bla", frequency_band = "theta_2")
-# print(results$plot)
+# Filtering for complete cases in selected columns
+na_rows_index <- !complete.cases(continuous_data[c("time", "group", "period_type", "neuron_type", "animal", "unit", "event")])
+na_data <- continuous_data[na_rows_index, ]
+head(na_data)  # Display the first few rows to inspect
 
 
-### PL THETA 1 ###
 
-clean_data <- data_with_counts[!is.na(data_with_counts[['pl_theta_1_power']]), ]
-results <- run_count_power_analysis(data = clean_data, region = "pl", frequency_band = "theta_1")
-print(results$plot)
 
-plot_aggregated_data(clean_data, 'pl_theta_1_power', 'count', "PL Theta 1 Power", "Count", factors=c("neuron_type", "period_type", "group"))
-
-continuous_data <- data %>%
-  filter(time < .3) %>%
-  filter(!is.na(pl_theta_1_power)) %>%
-  group_by(period, group, period_type, neuron_type, unit, animal, event, time_bin) %>%
-  summarise(
-    pl_theta_1_power  = mean(pl_theta_1_power, na.rm = TRUE),
-    count = sum(spike_counts, na.rm = TRUE),
-    .groups = "drop"  # This line drops the grouping structure and returns a regular data frame
-  )
-
-continuous_data <- continuous_data %>%
-  arrange(animal, unit, period, group, period_type, neuron_type, event, time_bin) %>%
-  group_by(animal, unit, period, group, period_type, neuron_type, event) %>%
-  mutate(count_lag1 = lag(count, default = NA)) %>%
-  ungroup()
 
 
 continuous_data <- continuous_data %>%
+  arrange(animal, unit, period, group, period_type, neuron_type, event, time) %>%
   group_by(animal, unit, period, group, period_type, neuron_type, event) %>%
-  filter(time_bin != min(time_bin)) %>%
+  mutate(
+    count_lag1 = lag(count, n = 1, default = NA),  
+    count_lag2 = lag(count, n = 2, default = NA),
+    count_lag3 = lag(count, n = 3, default = NA)
+  ) %>%
   ungroup()
+
+
+
+continuous_data <- continuous_data %>%
+  filter(time >= 0) %>%
+  ungroup()
+
 
 continuous_data <- continuous_data %>%
   mutate(across(where(is.factor), droplevels))
 
 
 
+pl_clean_data <- continuous_data[!is.na(continuous_data[['pl_theta_1_power']]), ]
+
+na_rows_index <- !complete.cases(pl_clean_data[c("time_bin", "count_lag1", "group", "period_type", "neuron_type", "pl_theta_1_power", "animal", "unit", "event")])
 
 
-model <- glmmTMB(count ~ time_bin + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
+na_data <- pl_clean_data[na_rows_index, ]
+head(na_data)  # Display the first few rows to inspect
+
+
+
+# plot_aggregated_data(clean_data, 'pl_theta_1_power', 'count', "PL Theta 1 Power", "Count", factors=c("neuron_type", "period_type", "group"))
+
+
+
+
+model <- glmmTMB(count ~ time + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
                    (1 | animal:unit) + (1 | animal:unit:period:event),
-                 data = continuous_data, 
+                 data = pl_clean_data, 
                  family = poisson(link = "log"),
                  ziformula = ~0,  # No zero-inflation
                  na.action = na.exclude,
                  control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
 
 
+model <- glmmTMB(count ~ time + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
+                   (1 | animal:unit) + (1 | animal:unit:period:event),
+                 data = pl_clean_data, 
+                 family = poisson(link = "log"),
+                 ziformula = ~0,  # No zero-inflation
+                 na.action = na.exclude,
+                 control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+
+simulationOutput <- simulateResiduals(fittedModel = model, plot = TRUE)
+
+set.seed(123)  # for reproducibility
+folds <- pl_clean_data %>%
+  mutate(fold = sample(1:5, size = n(), replace = TRUE))
+
+fit_glmmTMB <- function(train, test) {
+  # Fit model
+  model <- glmmTMB(count ~ time_bin + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
+                     (1 | animal:unit) + (1 | animal:unit:period:event),
+                   data = train, 
+                   family = poisson(link = "log"),
+                   ziformula = ~0,  # Adjust according to your actual zero-inflation setup
+                   control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+  
+  # Predict on test set
+  pred <- predict(model, newdata = test, type = "response")
+  
+  # Return actual vs predicted
+  data.frame(actual = test$count, predicted = pred)
+}
+
+# Perform cross-validation
+results <- map_df(1:5, function(k) {
+  train <- folds %>% filter(fold != k)
+  test <- folds %>% filter(fold == k)
+  
+  fit_glmmTMB(train, test)
+})
+
+# Calculate performance metrics, e.g., RMSE
+results %>% 
+  mutate(residuals = actual - predicted,
+         squared_residuals = residuals^2) %>%
+  summarise(RMSE = sqrt(mean(squared_residuals)))
+
+
+# Set up k-fold cross-validation
+set.seed(123)  # for reproducibility
+folds <- createFolds(pl_clean_data$count, k = 5, list = TRUE, returnTrain = TRUE)
+
+# Function to perform model fitting and calculate RMSE for non-zero counts
+perform_cv <- function(train_index, test_index) {
+  train_data <- pl_clean_data[train_index, ]
+  test_data <- pl_clean_data[test_index, ]
+  
+  # Fit the model
+  model <- glmmTMB(count ~ time_bin + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
+                     (1 | animal:unit) + (1 | animal:unit:period:event),
+                   data = train_data, 
+                   family = poisson(link = "log"))
+  
+  # Predict on test set
+  predictions <- predict(model, newdata = test_data, type = "response")
+  
+  # Obtain indices where actual counts are non-zero
+  nonzero_indices <- which(test_data$count > 0)
+  
+  # Filter non-zero actual counts and corresponding predictions
+  actual_nonzero <- test_data$count[nonzero_indices]
+  predicted_nonzero <- predictions[nonzero_indices]
+  
+  # Calculate RMSE for non-zero counts
+  rmse_nonzero <- sqrt(mean((actual_nonzero - predicted_nonzero)^2))
+  
+  return(rmse_nonzero)
+}
+
+# Apply the function to each fold
+rmse_results <- sapply(folds, function(f) {
+  train_index <- f
+  test_index <- setdiff(seq_len(nrow(pl_clean_data)), train_index)
+  perform_cv(train_index, test_index)
+})
+
+# Calculate average RMSE across folds
+average_rmse_nonzero <- mean(rmse_results)
+average_rmse_nonzero
+
+model_without_time <- glmmTMB(count ~ count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
+                                (1 | animal:unit) + (1 | animal:unit:period:event),
+                              data = pl_clean_data, 
+                              family = poisson(link = "log"),
+                              ziformula = ~0,  # Adjust if you have zero-inflation
+                              control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+
+aic_with_time <- AIC(model)
+aic_without_time <- AIC(model_without_time)
+
+
 # Calculate mean and standard deviation for the power variable
-mean_power <- mean(continuous_data[['pl_theta_1_power']], na.rm = TRUE)
-sd_power <- sd(continuous_data[['pl_theta_1_power']], na.rm = TRUE)
+mean_power <- mean(pl_clean_data[['pl_theta_1_power']], na.rm = TRUE)
+sd_power <- sd(pl_clean_data[['pl_theta_1_power']], na.rm = TRUE)
 
-# First, create a unique identifier in your training data for existing combinations
-continuous_data$combo <- with(continuous_data, paste(animal, unit, period, sep = "_"))
+# Create a combined identifier for the nested structure
+pl_clean_data$animal_unit_period_event <- with(pl_clean_data, paste(animal, unit, period, event, sep = "_"))
 
-# Generate prediction data grid
+# Generate combinations for freely varying factors
 pred_data <- expand.grid(
-  group = levels(continuous_data$group),
-  period_type = levels(continuous_data$period_type),
-  neuron_type = levels(continuous_data$neuron_type),
-  power = c(mean_power - sd_power, mean_power, mean_power + sd_power),
-  animal = unique(continuous_data$animal),
-  unit = unique(continuous_data$unit),
-  period = unique(continuous_data$period)
-  time_bin = unique(continuous_data)
+  group = levels(pl_clean_data$group),
+  period_type = levels(pl_clean_data$period_type),
+  neuron_type = levels(pl_clean_data$neuron_type),
+  power = c(mean_power - sd_power, mean_power, mean_power + sd_power)
 )
 
-# Create a combo identifier in the prediction data
-pred_data$combo <- with(pred_data, paste(animal, unit, period, sep = "_"))
+# Merge with unique combinations of nested structure
+unique_combinations <- unique(pl_clean_data[, c("animal_unit_period_event")])
+pred_data <- merge(pred_data, unique_combinations, by = NULL) # Adjust based on how you want to include these nested identifiers
 
-# Filter pred_data to only include combinations that exist in clean_data
-pred_data <- pred_data[pred_data$combo %in% continuous_data$combo,]
+# Extract variables from the combined identifier
+pred_data <- transform(pred_data, animal = sapply(strsplit(as.character(animal_unit_period_event), "_"), `[`, 1),
+                       unit = as.integer(sapply(strsplit(as.character(animal_unit_period_event), "_"), `[`, 2)),
+                       period = as.integer(sapply(strsplit(as.character(animal_unit_period_event), "_"), `[`, 3)),
+                       event = as.integer(sapply(strsplit(as.character(animal_unit_period_event), "_"), `[`, 4)))
 
-# Properly name the power variable in the prediction data
-names(pred_data)[names(pred_data) == "power"] <- 'pl_theta_1_power'
+pred_data$time_bin <- mean(pl_clean_data$time_bin)
+pred_data$count_lag1 <- mean(pl_clean_data$count_lag1)
+pred_data$pl_theta_1_power <- pred_data$power
 
 # Proceed with predictions
-pred_data$predicted_counts <- predict(model, newdata = pred_data, re.form = NA,
-                                      type = 'response')
+pred_data$predicted_counts <- predict(model, newdata = pred_data, re.form = NA, type = 'response')
+
+
+
+
 
 # Plot the predictions
 p <- graph_predictions(
   data=pred_data, x='pl_theta_1_power', y='predicted_counts', 
   xlabel= "pl theta 1 power",
   ylabel= labs(y = "Predicted Count of Spikes per Event (0-.3s)")) 
+
+
+
+
+
+  # Ensure pl_theta_1_power is numeric and create bins for it
+  grouped_data <- pl_clean_data %>%
+    mutate(pl_theta_1_power = as.numeric(pl_theta_1_power),
+           power_bin = ntile(pl_theta_1_power, 10))
+  
+  
+  # Average over events
+  grouped_data <- grouped_data %>%
+    group_by(neuron_type, animal, unit, period, power_bin, period_type, group) %>%
+    summarise(avg_count = mean(count, na.rm = TRUE), .groups = 'drop')
+  
+  # Average over periods
+  grouped_data <- grouped_data %>%
+    group_by(neuron_type, animal, unit, power_bin, period_type, group) %>%
+    summarise(avg_count = mean(avg_count, na.rm = TRUE), .groups = 'drop')
+  
+  # Average over units
+  grouped_data <- grouped_data %>%
+    group_by(neuron_type, animal, power_bin, period_type, group) %>%
+    summarise(avg_count = mean(avg_count, na.rm = TRUE), .groups = 'drop')
+  
+  # Average over animals
+  grouped_data <- grouped_data %>%
+    group_by(neuron_type, power_bin, period_type, group) %>%
+    summarise(avg_count = mean(avg_count, na.rm = TRUE), .groups = 'drop')
+  
+  p <- ggplot(grouped_data, aes(x = as.factor(power_bin), y = avg_count, color = period_type)) +
+    geom_point(aes(group = interaction(neuron_type, group, period_type))) +  # Ensure the same group interaction is used here
+    geom_line(aes(group = interaction(neuron_type, group, period_type))) +  # This will connect points according to the group
+    scale_color_manual(values = c("tone" = "green", "pretone" = "pink")) +
+    facet_grid(neuron_type ~ group) +
+    labs(x = "Binned pl_theta_1_power", y = "Average Count") +
+    theme_bw()
+  
+
+
+
+plot_aggregated_data(pl_clean_data) 
+
+
+# Example usage with your dataset
+# plot_aggregated_data(your_dataset)
 
 
 
