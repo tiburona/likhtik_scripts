@@ -101,9 +101,32 @@ emm_results = emmeans(model_glmmTMB, specs = pairwise ~ group | period_type | ne
 emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
 
 
-
 plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="response") + 
   labs(x="", y = paste("Predicted Square Root MRL PL Theta 1")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+
+## Theta 2
+
+df <- prepare_df(csv_file, 'theta_2', 'pl')
+clean_df <- df %>% filter(!is.na(mean_mrl))
+
+clean_df$sqrt_mrl <- clean_df$mean_mrl**.5
+
+model_glmmTMB <- glmmTMB(sqrt_mrl ~ group * neuron_type * period_type + (1 | animal/unit), data = clean_df, family = beta_family(link = "logit"))
+
+summary(model_glmmTMB)
+
+simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
+
+
+emm_results = emmeans(model_glmmTMB, specs = pairwise ~ group | period_type | neuron_type)
+emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
+
+
+
+plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="response") + 
+  labs(x="", y = paste("Predicted Square Root MRL PL Theta 2")) +
   scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 
@@ -113,6 +136,30 @@ plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="
 
 
 df <- prepare_df(csv_file, 'theta_1', 'bla')
+clean_df <- df %>% filter(!is.na(mean_mrl))
+
+clean_df$sqrt_mrl <- clean_df$mean_mrl**.5
+
+model_glmmTMB <- glmmTMB(sqrt_mrl ~ group * neuron_type * period_type + (1 | animal/unit), data = clean_df, family = beta_family(link = "logit"))
+
+summary(model_glmmTMB)
+
+simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
+
+
+emm_results = emmeans(model_glmmTMB, specs = pairwise ~ group | period_type | neuron_type)
+emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
+
+
+plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="response") + 
+  labs(x="", y = paste("Predicted Square Root MRL BLA Theta 1")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+
+### Theta 2 ###
+
+
+df <- prepare_df(csv_file, 'theta_2', 'bla')
 clean_df <- df %>% filter(!is.na(mean_mrl))
 
 clean_df$sqrt_mrl <- clean_df$mean_mrl**.5
@@ -155,4 +202,27 @@ emm_means <- summary(emm_results, type = "response")  # This directly gives you 
 
 plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="response") + 
   labs(x="", y = paste("Predicted Square Root MRL BLA Theta 1")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+
+## Theta 2
+
+df <- prepare_df(csv_file, 'theta_2', 'hpc')
+clean_df <- df %>% filter(!is.na(mean_mrl))
+
+clean_df$sqrt_mrl <- clean_df$mean_mrl**.5
+
+model_glmmTMB <- glmmTMB(sqrt_mrl ~ group * neuron_type * period_type + (1 | animal/unit), data = clean_df, family = beta_family(link = "logit"))
+
+summary(model_glmmTMB)
+
+simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
+
+
+emm_results = emmeans(model_glmmTMB, specs = pairwise ~ group | period_type | neuron_type)
+emm_means <- summary(emm_results, type = "response")  # This directly gives you the response scale values
+
+
+plot = emmip(emm_results, group ~ period_type | neuron_type, CIs = FALSE, type="response") + 
+  labs(x="", y = paste("Predicted Square Root MRL BLA Theta 2")) +
   scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))

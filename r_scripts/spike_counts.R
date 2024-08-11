@@ -79,7 +79,7 @@ zip_emm_means <- summary(zip_emm_results, type = "response")  # This directly gi
 
 zip_data_plot <- emmip(zip_emm_results, group ~ period_type | neuron_type, CIs = FALSE, type = "response") +
   labs(y = "Predicted Count of Spikes per Event (0-.3s)") +
-  scale_color_manual(values = c("control" = "purple", "defeat" = "orange"))
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 print(zip_data_plot)
 

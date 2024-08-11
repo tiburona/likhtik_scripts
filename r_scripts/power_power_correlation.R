@@ -93,9 +93,27 @@ corr_data$time_squared <- corr_data$time^2
 
 model_glmmTMB <- glmmTMB(bla_pl_theta_1_correlation ~ time_squared + time* group * period_type + (1|animal), data = corr_data)
 
+model_glmmTMB <- glmmTMB(
+  bla_pl_theta_1_correlation ~ time_squared + time * group * period_type + (1|animal),
+  data = corr_data,
+  family = beta_family()
+)
+
+model_glmmTMB <- glmmTMB(bla_pl_theta_1_correlation ~ time_squared + time * group * period_type + (1|animal) + ar1(time|animal), data = corr_data)
+
+
 summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
+
+
+library(nlme)
+model_nlme <- lme(
+  bla_pl_theta_1_correlation ~ time_squared + time * group * period_type,
+  random = ~1 | animal,
+  correlation = corAR1(form = ~ time | animal),
+  data = corr_data
+)
 
 # Generate the emmip plot
 emmip_plot <- emmip(model_glmmTMB, period_type ~ time | group, 

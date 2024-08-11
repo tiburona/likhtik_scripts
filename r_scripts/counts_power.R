@@ -11,6 +11,7 @@ library(boot)
 library(purrr)
 library(forcats)
 library(caret)
+library(brms)
 
 
 
@@ -190,13 +191,72 @@ head(na_data)  # Display the first few rows to inspect
 
 
 
-model <- glmmTMB(count ~ time + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
-                   (1 | animal:unit) + (1 | animal:unit:period:event),
-                 data = pl_clean_data, 
-                 family = poisson(link = "log"),
-                 ziformula = ~0,  # No zero-inflation
-                 na.action = na.exclude,
-                 control = glmmTMBControl(optimizer = optim, optArgs = list(method = "BFGS")))
+install.packages("INLA", repos = c(getOption("repos"), INLA = "https://inla.r-inla-download.org/R/stable"))
+
+pl_clean_data <- pl_clean_data %>%
+  mutate(animal = as.factor(animal),
+         unit = as.factor(unit),
+         period = as.factor(period),
+         event = as.factor(event),
+         group = as.factor(group),
+         period_type = as.factor(period_type),
+         neuron_type = as.factor(neuron_type),
+         pl_theta_1_power = as.numeric(pl_theta_1_power),
+         count = as.numeric(count),
+         time = as.numeric(time))  # Ensure time is numeric
+
+# Create a nested time variable
+pl_clean_data <- pl_clean_data %>%
+  arrange(animal, unit, period, event, time) %>%
+  group_by(animal, unit, period, event) %>%
+  mutate(time_factor = as.numeric(row_number())) %>%  # Explicitly convert time_factor to numeric
+  ungroup()
+
+# Create a replicate identifier for the nested structure
+pl_clean_data <- pl_clean_data %>%
+  mutate(replicate_id = as.numeric(interaction(animal, unit, period, event, drop = TRUE)))
+
+str(pl_clean_data)
+
+pl_clean_data <- pl_clean_data %>%
+  arrange(animal, unit, period, event, time) %>%
+  group_by(animal, unit, period, event) %>%
+  mutate(unique_time_num = as.numeric(row_number())) %>%
+  ungroup()
+
+# Define the correlation structure
+corStruct <- corAR1(form = ~ unique_time_num | animal/unit/period/event)
+
+
+# Fit the model
+model <- lme(count ~ time + group * period_type * neuron_type * pl_theta_1_power,
+             random = ~ 1 | animal/unit/period/event,
+             correlation = corStruct,
+             data = pl_clean_data,
+             method = "REML")
+
+# Summarize the model results
+summary(model)
+
+residuals <- resid(model)
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+
+plot(residuals ~ fitted(model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+hist(residuals, main = "Histogram of Residuals")
+
+formula <- bf(count ~ time + group * period_type * neuron_type * pl_theta_1_power + 
+                ar(time = unique_time_num, gr = animal:unit:period:event) + (1| animal:unit) +
+                (1 | animal:unit:period:event))
+
+# Fit the model using brms
+model <- brm(formula, data = pl_clean_data, family = zero_inflated_poisson(), chains = 4, cores = 4)
+
+# Summarize the model results
+summary(model)
+
 
 
 model <- glmmTMB(count ~ time + count_lag1 + group * period_type * neuron_type * pl_theta_1_power + 
