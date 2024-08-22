@@ -22,7 +22,7 @@ create_predictions_data <- function(data, model, continuous_predictor) {
   pred_data <- expand.grid(
     group = levels(clean_data$group),
     period_type = levels(clean_data$period_type),
-    neuron_type = levels(clean_data$neuron_type),
+#    neuron_type = levels(clean_data$neuron_type),
     iv = c(mean_iv - sd_iv, mean_iv, mean_iv + sd_iv)
   )
   
