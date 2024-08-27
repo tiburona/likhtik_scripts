@@ -56,6 +56,10 @@ periods_1 <- subset(just_freezing_data, period < 1)
 
 period_1_model <- lmer(percent_freezing ~ group*period_type + (1|animal), data=periods_1)
 
+residuals <- resid(period_1_model)
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+
 plot(residuals(period_1_model) ~ fitted(period_1_model))
 abline(h = 0, col = "red")
 
@@ -63,6 +67,8 @@ abline(h = 0, col = "red")
 model_beta <- glmmTMB(percent_freezing_adj ~ group * period_type + poly(period, 2) + (1 | animal),
                       data = just_freezing_data,
                       family = list(family="beta", link="logit"))
+
+
 
 period_1_model_beta <- glmmTMB(percent_freezing_adj ~ group * period_type + (1 | animal),
                       data = periods_1,
@@ -87,6 +93,8 @@ model_gamlss <- gamlss(percent_freezing_adj ~ group * period_type + random(anima
 
 summary(model_gamlss)
 
+model_coefficients <- coef(model_gamlss)
+
 residuals <- resid(model_gamlss)
 qqnorm(resid(model_gamlss))
 qqline(resid(model_gamlss))
@@ -104,7 +112,7 @@ new_data <- expand.grid(
 )
 
 # Step 2: Predict for each combination
-new_data$predicted <- predict(model_gamlss, newdata = new_data, type = "response")
+new_data$predicted <- predict(period_1_model, newdata = new_data, type = "response")
 
 # Step 3: Average predictions for each fixed effect combination
 

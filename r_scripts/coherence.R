@@ -27,12 +27,22 @@ summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
-plot = emmip(model_glmmTMB, group ~ period_type, CIs = FALSE) + 
+# Step 1: Extract estimated marginal means (EMMs) on the logit scale
+emm <- emmeans(model_glmmTMB, ~ group * period_type)
+
+# Step 2: Back-transform the EMMs from the logit scale to the original scale
+emm_transformed <- summary(emm, type = "response")
+
+# Step 3: Plot the back-transformed EMMs with lines
+plot <- ggplot(emm_transformed, aes(x = period_type, y = response, color = group, group = group)) +
+  geom_line() +            # Add lines connecting the points
+  geom_point() +           # Add points for each group/period_type
   labs(x = "", y = "Predicted Coherence") +
-  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354")
-  )
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 print(plot)
+
+
 
 
 
@@ -46,13 +56,20 @@ summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
-plot = emmip(model_glmmTMB, group ~ period_type, CIs = FALSE) + 
+# Step 1: Extract estimated marginal means (EMMs) on the logit scale
+emm <- emmeans(model_glmmTMB, ~ group * period_type)
+
+# Step 2: Back-transform the EMMs from the logit scale to the original scale
+emm_transformed <- summary(emm, type = "response")
+
+# Step 3: Plot the back-transformed EMMs with lines
+plot <- ggplot(emm_transformed, aes(x = period_type, y = response, color = group, group = group)) +
+  geom_line() +            # Add lines connecting the points
+  geom_point() +           # Add points for each group/period_type
   labs(x = "", y = "Predicted Coherence") +
-  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354")
-  )
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 print(plot)
-
 
 ### BLA_HPC 3-5
 
@@ -81,11 +98,18 @@ summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
-plot = emmip(model_glmmTMB, group ~ period_type, CIs = FALSE) + 
-  labs(x = "", y = "Predicted Coherence") +
-  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354")
-  )
+# Step 1: Extract estimated marginal means (EMMs) on the logit scale
+emm <- emmeans(model_glmmTMB, ~ group * period_type)
 
+# Step 2: Back-transform the EMMs from the logit scale to the original scale
+emm_transformed <- summary(emm, type = "response")
+
+# Step 3: Plot the back-transformed EMMs with lines
+plot <- ggplot(emm_transformed, aes(x = period_type, y = response, color = group, group = group)) +
+  geom_line() +            # Add lines connecting the points
+  geom_point() +           # Add points for each group/period_type
+  labs(x = "", y = "Predicted Coherence") +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 print(plot)
 
 
@@ -99,11 +123,18 @@ summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
-plot = emmip(model_glmmTMB, group ~ period_type, CIs = FALSE) + 
-  labs(x = "", y = "Predicted Coherence") +
-  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354")
-  )
+# Step 1: Extract estimated marginal means (EMMs) on the logit scale
+emm <- emmeans(model_glmmTMB, ~ group * period_type)
 
+# Step 2: Back-transform the EMMs from the logit scale to the original scale
+emm_transformed <- summary(emm, type = "response")
+
+# Step 3: Plot the back-transformed EMMs with lines
+plot <- ggplot(emm_transformed, aes(x = period_type, y = response, color = group, group = group)) +
+  geom_line() +            # Add lines connecting the points
+  geom_point() +           # Add points for each group/period_type
+  labs(x = "", y = "Predicted Coherence") +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 print(plot)
 
 ### HPC_PL 5-12
@@ -116,12 +147,19 @@ summary(model_glmmTMB)
 
 simulationOutput <- simulateResiduals(fittedModel = model_glmmTMB, plot = TRUE)
 
-plot = emmip(model_glmmTMB, group ~ period_type, CIs = FALSE) + 
+# Step 1: Extract estimated marginal means (EMMs) on the logit scale
+emm <- emmeans(model_glmmTMB, ~ group * period_type)
+
+# Step 2: Back-transform the EMMs from the logit scale to the original scale
+emm_transformed <- summary(emm, type = "response")
+
+# Step 3: Plot the back-transformed EMMs with lines
+plot <- ggplot(emm_transformed, aes(x = period_type, y = response, color = group, group = group)) +
+  geom_line() +            # Add lines connecting the points
+  geom_point() +           # Add points for each group/period_type
   labs(x = "", y = "Predicted Coherence") +
-  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354")
-  )
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
 
 print(plot)
-
 
 

@@ -48,7 +48,7 @@ granger_df <- granger_df %>%
 
 # Just the first period, theta 1
 
-theta_1_data <- granger_df %>%
+theta_2_data <- granger_df %>%
   # mutate(
   #   scaled_length = (length - min(length, na.rm = TRUE)) / (max(length, na.rm = TRUE) - min(length, na.rm = TRUE)),  # Min-max scaling
   #   positive_scaled_length = scaled_length + 0.1  # Ensuring all values are positive by adding 0.1
@@ -65,6 +65,10 @@ theta_1_data <- granger_df %>%
   #filter(period == 0) %>%
   group_by(animal, period_type, granger_calculator, group, period) %>%
   summarize(
+    bla_theta_1_power = mean(bla_theta_1_power),
+    pl_theta_1_power = mean(pl_theta_1_power),
+    bla_theta_2_power = mean(bla_theta_1_power),
+    pl_theta_2_power = mean(pl_theta_2_power),
     freezing_adj = mean(freezing_adj, na.rm = TRUE),
     bla_pl_theta_1_granger = mean(forward, na.rm = TRUE),
     pl_bla_theta_1_granger = mean(backward, na.rm = TRUE),
@@ -74,12 +78,69 @@ theta_1_data <- granger_df %>%
   ) %>%
   mutate(
     diff = bla_pl_theta_1_granger - pl_bla_theta_1_granger,
-    diff_logs = log_bla_pl_theta_1_granger - log_pl_bla_theta_1_granger,
-    log_diffs = log(bla_pl_theta_1_granger - pl_bla_theta_1_granger))
-  
-theta_1_model <- lmer(diff ~ group * period_type  + (1|animal), data = theta_1_data)
+    diff_logs = log_bla_pl_theta_1_granger - log_pl_bla_theta_1_granger)
 
+
+theta_2_data <- granger_df %>%
+  # mutate(
+  #   scaled_length = (length - min(length, na.rm = TRUE)) / (max(length, na.rm = TRUE) - min(length, na.rm = TRUE)),  # Min-max scaling
+  #   positive_scaled_length = scaled_length + 0.1  # Ensuring all values are positive by adding 0.1
+  # ) %>%
+  mutate(
+    proportion = percent_freezing / 100,
+    freezing_adj = pmin(pmax(proportion, 0.0001), 0.9999)
+  ) %>%
+  mutate(
+    log_forward = log(forward),
+    log_backward = log(backward)
+  ) %>%
+  filter(frequency >= 8 & frequency <= 12) %>%  # Filtering for frequency between 4 and 8
+  #filter(period == 0) %>%
+  group_by(animal, period_type, granger_calculator, group, period) %>%
+  summarize(
+    bla_theta_1_power = mean(bla_theta_1_power),
+    pl_theta_1_power = mean(pl_theta_1_power),
+    bla_theta_2_power = mean(bla_theta_1_power),
+    pl_theta_2_power = mean(pl_theta_2_power),
+    freezing_adj = mean(freezing_adj, na.rm = TRUE),
+    bla_pl_theta_1_granger = mean(forward, na.rm = TRUE),
+    pl_bla_theta_1_granger = mean(backward, na.rm = TRUE),
+    log_bla_pl_theta_1_granger = mean(log_forward, na.rm = TRUE),
+    log_pl_bla_theta_1_granger = mean(log_backward, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    diff = bla_pl_theta_1_granger - pl_bla_theta_1_granger,
+    diff_logs = log_bla_pl_theta_1_granger - log_pl_bla_theta_1_granger)
+  
+theta_1_model <- lmer(diff_logs ~ group * period_type  + (1|animal), data = theta_1_data)
 summary(theta_1_model)
+
+emmip(theta_1_model, group ~ period_type, CIs = FALSE) + 
+  labs(x = '', y = paste("BLA Leads Advantage")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+theta_2_model <- lmer(diff_logs ~ group * period_type  + (1|animal), data = theta_2_data)
+summary(theta_2_model)
+
+emmip(theta_2_model, group ~ period_type, CIs = FALSE) + 
+  labs(x = '', y = paste("BLA Leads Advantage")) +
+  scale_color_manual(values = c("control" = "#6C4675", "defeat" = "#F2A354"))
+
+residuals <- resid(theta_2_model)
+
+hist(residuals, main = "Histogram of Residuals")
+
+plot(residuals ~ fitted(theta_1_model), main = "Residuals vs Fitted")
+abline(h = 0, col = "red")
+
+qqnorm(residuals, main = "Q-Q Plot of Residuals")
+qqline(residuals, col = "red")
+
+
+
+qqnorm(residuals_no_outlier, main = "Q-Q Plot of Residuals")
+qqline(residuals_no_outlier, col = "red")
 
 first_period_theta_1_data <- first_period_theta_1_data %>%
   filter(!is.na(bla_pl_theta_1_granger))
